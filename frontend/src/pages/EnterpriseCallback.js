@@ -93,11 +93,14 @@ export default function EnterpriseCallback() {
   };
 
   const handleConnectOrg = async (org) => {
+    console.log('[EnterpriseCallback] Connecting organization:', org.login);
     setConnecting(org.id);
     
     try {
+      console.log('[EnterpriseCallback] Getting Firebase token...');
       const token = await getToken();
       
+      console.log('[EnterpriseCallback] Calling connect API...');
       const res = await fetch(`${API}/api/enterprise/organizations/connect`, {
         method: 'POST',
         headers: {
@@ -113,14 +116,21 @@ export default function EnterpriseCallback() {
         })
       });
 
-      if (!res.ok) throw new Error('Failed to connect organization');
+      console.log('[EnterpriseCallback] Connect response status:', res.status);
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[EnterpriseCallback] Connect error:', errorData);
+        throw new Error('Failed to connect organization');
+      }
 
       const data = await res.json();
+      console.log('[EnterpriseCallback] Organization connected successfully:', data);
       
       toast.success(`Connected ${org.name || org.login}!`);
       navigate('/enterprise/organizations');
     } catch (error) {
-      console.error('Connect error:', error);
+      console.error('[EnterpriseCallback] Connect error:', error);
       toast.error('Failed to connect organization');
       setConnecting(null);
     }

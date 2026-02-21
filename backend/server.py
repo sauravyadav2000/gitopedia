@@ -37,9 +37,13 @@ from emergentintegrations.payments.stripe.checkout import (
 )
 
 # MongoDB
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.environ.get('MONGO_URL')
+db_name = os.environ.get('DB_NAME')
+if not mongo_url or not db_name:
+    raise RuntimeError("CRITICAL: MONGO_URL and DB_NAME environment variables must be set.")
+
 mongo_client = AsyncIOMotorClient(mongo_url)
-db = mongo_client[os.environ['DB_NAME']]
+db = mongo_client[db_name]
 
 # FastAPI
 app = FastAPI()
@@ -148,8 +152,11 @@ async def fetch_github_data(owner: str, repo: str) -> dict:
                 readme_content = base64.b64decode(raw.get("content", "")).decode("utf-8", errors="replace")
                 if len(readme_content) > 10000:
                     readme_content = readme_content[:10000] + "\n\n[... README truncated ...]"
-            except:
+            except Exception as e:
+                logger.warning(f"[{owner}/{repo}] Unable to decode README: {e}")
                 readme_content = "Unable to decode README"
+        elif isinstance(readme_resp, Exception):
+            logger.warning(f"[{owner}/{repo}] Failed to fetch README: {readme_resp}")
 
         file_tree = []
         if not isinstance(tree_resp, Exception) and tree_resp.status_code == 200:
@@ -209,6 +216,8 @@ async def fetch_github_data(owner: str, repo: str) -> dict:
         config_files = {}
         key_files = ["package.json", "requirements.txt", "Cargo.toml", "go.mod", "pom.xml",
                       "Dockerfile", "docker-compose.yml", "Makefile", "tsconfig.json", "pyproject.toml"]
+        
+        # Sequentially fetch config files (fine for <10 small files)
         for filepath in key_files:
             try:
                 resp = await client.get(
@@ -217,10 +226,13 @@ async def fetch_github_data(owner: str, repo: str) -> dict:
                 if resp.status_code == 200:
                     content_data = resp.json()
                     if content_data.get("size", 0) <= 100000:
-                        content = base64.b64decode(content_data.get("content", "")).decode("utf-8", errors="replace")
-                        config_files[filepath] = content[:5000]
-            except:
-                pass
+                        try:
+                            content = base64.b64decode(content_data.get("content", "")).decode("utf-8", errors="replace")
+                            config_files[filepath] = content[:5000]
+                        except Exception as e:
+                            logger.warning(f"[{owner}/{repo}] Error decoding config file {filepath}: {e}")
+            except Exception as e:
+                logger.warning(f"[{owner}/{repo}] Network error fetching {filepath}: {e}")
 
         data = {
             "repo_info": {
@@ -551,6 +563,22 @@ async def generate_report_content(data: dict) -> str:
     raise HTTPException(500, "No LLM API key configured. Set ANTHROPIC_API_KEY or EMERGENT_LLM_KEY in .env")
 
 
+async def record_credit_transaction(user_id: str, amount: int, tx_type: str, reference_id: str, description: str, timestamp: str = None):
+    """Helper to record credit transactions consistently."""
+    if not timestamp:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+    await db.credit_transactions.insert_one({
+        "id": str(uuid.uuid4()), 
+        "user_id": user_id, 
+        "amount": amount,
+        "type": tx_type, 
+        "reference_id": reference_id,
+        "description": description, 
+        "created_at": timestamp,
+    })
+
+
 # ===== Auth Routes =====
 @api_router.post("/auth/verify")
 async def verify_auth(request: Request):
@@ -673,6 +701,8 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             llm_start = time.time()
             logger.info(f"[LLM START] Starting generation for {repo_full_name} (user: {uid})")
             generation_task = asyncio.create_task(generate_report_content(github_data))
+            request_id = str(uuid.uuid4())
+            logger.info(f"[{request_id}] LLM task created")
             ping_count = 0
             
             # Keep sending pings until generation completes
@@ -728,36 +758,39 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             await db.reports.insert_one(report)
             report.pop("_id", None)
 
-            await db.credit_transactions.insert_one({
-                "id": str(uuid.uuid4()), "user_id": uid, "amount": -2,
-                "type": "generation", "reference_id": report_id,
-                "description": f"Generated report for {repo_full_name}", "created_at": now,
-            })
+            await record_credit_transaction(
+                user_id=uid,
+                amount=-2,
+                tx_type="generation",
+                reference_id=report_id,
+                description=f"Generated report for {repo_full_name}",
+                timestamp=now
+            )
 
             # Mark success — credits stay deducted
             credits_deducted = False
 
             updated_user = await db.users.find_one({"uid": uid}, {"_id": 0})
             total_duration = time.time() - start_time
-            logger.info(f"[SUCCESS] Report generated in {total_duration:.2f}s for {repo_full_name} (user: {uid})")
+            logger.info(f"[User:{uid}] [Repo:{repo_full_name}] [SUCCESS] Report generated in {total_duration:.2f}s")
             yield f"data: {json.dumps({'type': 'done', 'report_id': report_id, 'credits_remaining': updated_user.get('credits', 0)})}\n\n"
 
         except asyncio.CancelledError:
             duration = time.time() - start_time
-            logger.warning(f"[CANCELLED] Connection dropped after {duration:.2f}s for {repo_full_name} (user: {uid})")
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Connection lost. Credits have been refunded.'})}\n\n"
+            logger.warning(f"[User:{uid}] [Repo:{repo_full_name}] [CANCELLED] Client disconnected after {duration:.2f}s")
+            # We don't yield here because the client is gone, but the finally block handles the refund
         except HTTPException as e:
             duration = time.time() - start_time
-            logger.error(f"[HTTP ERROR] {e.detail} after {duration:.2f}s for {repo_full_name}")
+            logger.error(f"[User:{uid}] [Repo:{repo_full_name}] [HTTP ERROR] {e.detail} after {duration:.2f}s")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e.detail)})}\n\n"
         except Exception as e:
             duration = time.time() - start_time
-            logger.error(f"[ERROR] Generation failed after {duration:.2f}s for {repo_full_name}: {str(e)}")
+            logger.error(f"[User:{uid}] [Repo:{repo_full_name}] [ERROR] Generation failed after {duration:.2f}s: {str(e)}")
             yield f"data: {json.dumps({'type': 'error', 'message': 'Report generation failed. Credits have been refunded.'})}\n\n"
         finally:
             # Guaranteed refund if credits were deducted but report wasn't saved
             if credits_deducted:
-                logger.info(f"[REFUND] Refunding 2 credits to user {uid} (generation failed)")
+                logger.info(f"[User:{uid}] [REFUND] Refunding 2 credits (generation failed or cancelled)")
                 await db.users.update_one({"uid": uid}, {"$inc": {"credits": 2}})
 
     return StreamingResponse(stream_report(), media_type="text/event-stream",
@@ -834,25 +867,29 @@ async def regenerate_report(report_id: str, user=Depends(get_current_user)):
                 "updated_at": now, "version": existing.get("version", 1) + 1,
             }})
 
-            await db.credit_transactions.insert_one({
-                "id": str(uuid.uuid4()), "user_id": uid, "amount": -2,
-                "type": "regeneration", "reference_id": report_id,
-                "description": f"Regenerated report for {existing['repo_full_name']}", "created_at": now,
-            })
+            await record_credit_transaction(
+                user_id=uid,
+                amount=-2,
+                tx_type="regeneration",
+                reference_id=report_id,
+                description=f"Regenerated report for {existing['repo_full_name']}",
+                timestamp=now
+            )
 
             credits_deducted = False  # Success — keep deduction
 
             updated_user = await db.users.find_one({"uid": uid}, {"_id": 0})
+            logger.info(f"[User:{uid}] [Repo:{existing['repo_full_name']}] [SUCCESS] Report regenerated")
             yield f"data: {json.dumps({'type': 'done', 'report_id': report_id, 'credits_remaining': updated_user.get('credits', 0)})}\n\n"
         except asyncio.CancelledError:
-            logger.warning(f"Report regeneration cancelled (connection dropped) for user {uid}")
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Connection lost. Credits have been refunded.'})}\n\n"
+            logger.warning(f"[User:{uid}] [Repo:{existing['repo_full_name']}] [CANCELLED] Regeneration disconnected")
+            # Client disconnected, let finally handle refund
         except Exception as e:
-            logger.error(f"Regeneration error: {e}")
+            logger.error(f"[User:{uid}] [Repo:{existing['repo_full_name']}] [ERROR] Regeneration failed: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': 'Regeneration failed. Credits refunded.'})}\n\n"
         finally:
             if credits_deducted:
-                logger.info(f"Refunding 2 credits for user {uid} (regeneration failed)")
+                logger.info(f"[User:{uid}] [REFUND] Refunding 2 credits (regeneration failed or cancelled)")
                 await db.users.update_one({"uid": uid}, {"$inc": {"credits": 2}})
 
     return StreamingResponse(stream_regen(), media_type="text/event-stream",
@@ -899,11 +936,14 @@ async def edit_report(report_id: str, req: EditRequest, user=Depends(get_current
         "content": req.content, "updated_at": now, "version": existing.get("version", 1) + 1
     }})
 
-    await db.credit_transactions.insert_one({
-        "id": str(uuid.uuid4()), "user_id": user["uid"], "amount": -1,
-        "type": "edit", "reference_id": report_id,
-        "description": f"Edited report for {existing['repo_full_name']}", "created_at": now,
-    })
+    await record_credit_transaction(
+        user_id=user["uid"],
+        amount=-1,
+        tx_type="edit",
+        reference_id=report_id,
+        description=f"Edited report for {existing['repo_full_name']}",
+        timestamp=now
+    )
 
     updated_user = await db.users.find_one({"uid": user["uid"]}, {"_id": 0})
     return {"message": "Report updated", "credits_remaining": updated_user.get("credits", 0)}
@@ -977,11 +1017,14 @@ async def check_checkout_status(session_id: str, request: Request, user=Depends(
                 {"uid": user["uid"]},
                 {"$inc": {"credits": credits_to_add}, "$set": {"updated_at": now}}
             )
-            await db.credit_transactions.insert_one({
-                "id": str(uuid.uuid4()), "user_id": user["uid"], "amount": credits_to_add,
-                "type": "purchase", "reference_id": tx.get("id"),
-                "description": f"Purchased {credits_to_add} credits ({tx.get('package_id')} package)", "created_at": now,
-            })
+            await record_credit_transaction(
+                user_id=user["uid"],
+                amount=credits_to_add,
+                tx_type="purchase",
+                reference_id=tx.get("id"),
+                description=f"Purchased {credits_to_add} credits ({tx.get('package_id')} package)",
+                timestamp=now
+            )
             logger.info(f"Credited {credits_to_add} credits to user {user['uid']} for session {session_id}")
     else:
         await db.payment_transactions.update_one(
@@ -1057,6 +1100,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_db_indexes():
+    """Ensure database indexes exist for performance and uniqueness."""
+    import pymongo
+    logger.info("Initializing database indexes...")
+    try:
+        # Users collection
+        await db.users.create_index("uid", unique=True)
+        
+        # Reports collection
+        await db.reports.create_index("id", unique=True)
+        # await db.reports.create_index("repo_full_name")  # For lookup dedup
+        await db.reports.create_index("generated_by")    # For user dashboard
+        await db.reports.create_index([("generated_at", pymongo.DESCENDING)])
+        
+        # Transactions collections
+        await db.payment_transactions.create_index("session_id", unique=True)
+        await db.payment_transactions.create_index("user_id")
+        await db.credit_transactions.create_index("user_id")
+        await db.credit_transactions.create_index([("created_at", pymongo.DESCENDING)])
+        
+        # GitHub cache
+        await db.github_cache.create_index("repo_full_name", unique=True)
+        # Optional: TTL index to automatically clear old cache documents
+        # await db.github_cache.create_index("fetched_at", expireAfterSeconds=GITHUB_CACHE_TTL)
+        
+        logger.info("Database indexes configured successfully.")
+    except Exception as e:
+        logger.error(f"Failed to create database indexes: {e}")
 
 
 @app.on_event("shutdown")

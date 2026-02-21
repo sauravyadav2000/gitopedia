@@ -1582,9 +1582,6 @@ async def start_organization_analysis(org_id: str, user=Depends(get_current_user
     """
     logger.info(f"[ANALYZE] User {user['uid'][:8]} requesting analysis for org {org_id}")
     
-    if not STRIPE_AVAILABLE:
-        logger.error("[ANALYZE] Stripe library not available")
-        raise HTTPException(503, "Payment processing is not available.")
     if not CELERY_AVAILABLE:
         logger.error("[ANALYZE] Celery not available")
         raise HTTPException(503, "Background analysis tasks are not available.")
@@ -1599,50 +1596,25 @@ async def start_organization_analysis(org_id: str, user=Depends(get_current_user
 
         logger.info(f"[ANALYZE] Organization: {org['github_org_name']}, Payment status: {org.get('payment_status')}")
 
+        # TEMPORARY: Skip payment for testing
         if org.get("payment_status") != "paid":
-            # Check if Stripe API key is valid
-            stripe_key = os.environ.get('STRIPE_API_KEY')
-            if not stripe_key or stripe_key == 'sk_test_emergent' or len(stripe_key) < 20:
-                logger.error(f"[ANALYZE] Invalid Stripe API key: {stripe_key[:15] if stripe_key else 'MISSING'}")
-                raise HTTPException(
-                    503, 
-                    "Payment system is not configured. Please contact the administrator to set up a valid Stripe API key."
-                )
-            
-            logger.info(f"[ANALYZE] Creating Stripe checkout session for ${org['paid_amount']}")
-            stripe_lib.api_key = stripe_key
-            
-            session = await anyio.to_thread.run_sync(
-                lambda: stripe_lib.checkout.Session.create(
-                    payment_method_types=['card'],
-                    line_items=[{
-                        'price_data': {
-                            'currency': 'usd',
-                            'product_data': {
-                                'name': f'Organization Analysis - {org["github_org_name"]}',
-                                'description': f'{org["total_repos"]} repositories ({org["pricing_tier"]} tier)',
-                            },
-                            'unit_amount': org["paid_amount"] * 100,
-                        },
-                        'quantity': 1,
-                    }],
-                    mode='payment',
-                    success_url=f"{FRONTEND_URL}/enterprise/organizations/{org_id}?payment=success",
-                    cancel_url=f"{FRONTEND_URL}/enterprise/organizations/{org_id}?payment=cancelled",
-                    metadata={'organization_id': org_id, 'user_id': user["uid"], 'type': 'organization_analysis'}
-                )
+            logger.warning(f"[ANALYZE] 🚧 TESTING MODE: Auto-marking organization as paid (skipping Stripe)")
+            await db.organizations.update_one(
+                {"id": org_id}, 
+                {"$set": {"payment_status": "paid", "updated_at": datetime.now(timezone.utc).isoformat()}}
             )
+            org["payment_status"] = "paid"
+            logger.info(f"[ANALYZE] Organization marked as paid for testing")
 
-            await db.organizations.update_one({"id": org_id}, {"$set": {"stripe_session_id": session.id}})
-            logger.info(f"[ANALYZE] Checkout session created: {session.id}")
-            return {"requires_payment": True, "checkout_url": session.url, "session_id": session.id, "amount": org["paid_amount"]}
-
+        # Check if analysis is already in progress
         active_job = await db.analysis_jobs.find_one(
             {"organization_id": org_id, "status": {"$in": ["queued", "processing"]}}, {"_id": 0}
         )
         if active_job:
+            logger.info(f"[ANALYZE] Analysis already in progress: {active_job['id']}")
             return {"message": "Analysis already in progress", "job": active_job}
 
+        # Create analysis job
         job_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         job = {
@@ -1655,10 +1627,13 @@ async def start_organization_analysis(org_id: str, user=Depends(get_current_user
             "created_at": now, "updated_at": now
         }
         await db.analysis_jobs.insert_one(job)
+        logger.info(f"[ANALYZE] Analysis job {job_id} created")
 
-        # FIX BUG-8: use module-level import, check CELERY_AVAILABLE above
+        # Start Celery task
         task = celery_analyze_organization.delay(job_id, org_id, org["access_token"])
-        logger.info(f"[enterprise] Analysis job {job_id} started for org {org_id}, Celery task: {task.id}")
+        logger.info(f"[ANALYZE] ✅ Celery task started: {task.id} for job {job_id}")
+
+        return {"message": "Analysis started", "job_id": job_id, "celery_task_id": task.id}
 
         return {"message": "Analysis started", "job_id": job_id, "celery_task_id": task.id}
     except HTTPException:

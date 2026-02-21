@@ -24,5 +24,6 @@ celery_app.conf.update(
     worker_max_tasks_per_child=50,
 )
 
-# Auto-discover tasks from tasks.py
-celery_app.autodiscover_tasks(['backend'])
+# Auto-discover tasks from tasks.py in the same directory
+celery_app.autodiscover_tasks(['.'], related_name='tasks')
+

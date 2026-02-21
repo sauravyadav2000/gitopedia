@@ -290,6 +290,7 @@ async def fetch_github_data(owner: str, repo: str, fast_mode: bool = True) -> di
             for c in (commits_resp.json() or [])[:10]:
                 commit = c.get("commit", {})
                 recent_commits.append({
+                    "sha": c.get("sha", ""),
                     "message": commit.get("message", "")[:200],
                     "author": commit.get("author", {}).get("name"),
                     "date": commit.get("author", {}).get("date"),

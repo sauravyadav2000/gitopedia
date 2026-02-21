@@ -200,6 +200,16 @@ class GitopediaAPITester:
             {"repo_url": "https://github.com/facebook/react"}
         )
         return success
+    
+    def test_user_transactions_unauthorized(self):
+        """Test /api/user/transactions requires authentication"""
+        success, response = self.run_test(
+            "User Transactions - Unauthorized",
+            "GET",
+            "/api/user/transactions",
+            401
+        )
+        return success
 
     def print_summary(self):
         """Print test results summary"""

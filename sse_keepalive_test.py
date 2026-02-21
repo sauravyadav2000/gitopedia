@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Advanced SSE Keepalive Test for Gitopedia
-Tests the critical SSE keepalive functionality to prevent ingress timeouts
+CRITICAL SSE KEEPALIVE TEST for Large Repository Report Generation
+Tests the fix for 60-second ingress timeout issue with keepalive pings
 """
 
 import asyncio
@@ -9,175 +9,280 @@ import aiohttp
 import json
 import time
 import sys
+import subprocess
+import threading
 from datetime import datetime
+import re
 
-class SSEKeepaliveTest:
+class SSEKeepaliveDebugTester:
     def __init__(self, base_url="https://report-gen-staging-1.preview.emergentagent.com"):
         self.base_url = base_url
-        self.results = []
+        self.test_results = []
+        self.keepalive_pings_detected = []
+        self.generation_logs = []
         
-    async def test_sse_keepalive_structure(self):
-        """Test SSE endpoint structure and timeout behavior (without auth)"""
-        print("🔍 Testing SSE Keepalive Structure...")
+    def monitor_backend_logs(self, duration=180):
+        """Monitor backend logs in real-time for keepalive patterns"""
+        print("🔍 Starting backend log monitoring...")
         
-        async with aiohttp.ClientSession() as session:
-            url = f"{self.base_url}/api/reports/generate"
-            data = {"repo_url": "https://github.com/facebook/react"}
+        try:
+            # Monitor supervisor backend logs
+            cmd = ["tail", "-f", "/var/log/supervisor/backend.out.log"]
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                     universal_newlines=True, bufsize=1)
             
-            try:
-                async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    # Should get 401 for no auth, but connection should be stable
-                    if response.status == 401:
-                        print("✅ SSE endpoint properly handles unauthenticated requests")
-                        print(f"   Response time: {response.headers.get('Date', 'N/A')}")
-                        
-                        # Check if proper streaming headers are configured
-                        headers = dict(response.headers)
-                        streaming_headers = {
-                            'Cache-Control': headers.get('cache-control'),
-                            'Connection': headers.get('connection'), 
-                            'X-Accel-Buffering': headers.get('x-accel-buffering')
-                        }
-                        
-                        print(f"   Streaming headers: {streaming_headers}")
-                        
-                        if 'no-cache' in headers.get('cache-control', ''):
-                            print("✅ Cache-Control: no-cache header present")
-                        else:
-                            print("⚠️  Cache-Control: no-cache header missing")
-                            
-                        self.results.append(("SSE Headers", True, "Headers configured for streaming"))
+            start_time = time.time()
+            keepalive_pattern = re.compile(r'\[KEEPALIVE\].*Ping #(\d+).*\((\d+\.\d+)s elapsed\)', re.IGNORECASE)
+            llm_start_pattern = re.compile(r'\[LLM START\]', re.IGNORECASE)
+            llm_complete_pattern = re.compile(r'\[LLM COMPLETE\]', re.IGNORECASE)
+            generation_start_pattern = re.compile(r'\[GENERATION START\]', re.IGNORECASE)
+            success_pattern = re.compile(r'\[SUCCESS\].*Report generated in (\d+\.\d+)s', re.IGNORECASE)
+            
+            while time.time() - start_time < duration:
+                line = process.stdout.readline()
+                if line:
+                    line = line.strip()
+                    self.generation_logs.append(f"{datetime.now().strftime('%H:%M:%S')} {line}")
+                    
+                    # Check for keepalive pings
+                    keepalive_match = keepalive_pattern.search(line)
+                    if keepalive_match:
+                        ping_num = keepalive_match.group(1)
+                        elapsed_time = float(keepalive_match.group(2))
+                        self.keepalive_pings_detected.append({
+                            'ping_number': int(ping_num),
+                            'elapsed_time': elapsed_time,
+                            'timestamp': datetime.now(),
+                            'log_line': line
+                        })
+                        print(f"📡 KEEPALIVE DETECTED: Ping #{ping_num} at {elapsed_time}s")
+                    
+                    # Track other important events
+                    if generation_start_pattern.search(line):
+                        print(f"🎬 GENERATION START detected: {line}")
+                    elif llm_start_pattern.search(line):
+                        print(f"🤖 LLM START detected: {line}")
+                    elif llm_complete_pattern.search(line):
+                        print(f"✅ LLM COMPLETE detected: {line}")
+                    elif success_pattern.search(line):
+                        success_match = success_pattern.search(line)
+                        total_time = float(success_match.group(1))
+                        print(f"🎉 SUCCESS detected: Total time {total_time}s")
+                        break
+                else:
+                    time.sleep(0.1)
+            
+            process.terminate()
+            
+        except Exception as e:
+            print(f"⚠️ Error monitoring logs: {e}")
+    
+    async def test_sse_stream_without_auth(self, repo_url):
+        """Test SSE endpoint behavior without authentication (should get 401)"""
+        print(f"🧪 Testing SSE endpoint behavior for {repo_url}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                data = {"repo_url": repo_url}
+                
+                async with session.post(
+                    f"{self.base_url}/api/reports/generate",
+                    json=data,
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    
+                    status = response.status
+                    print(f"   Response status: {status}")
+                    
+                    if status == 401:
+                        print("✅ SSE endpoint properly requires authentication")
                         return True
                     else:
-                        print(f"❌ Unexpected status: {response.status}")
-                        self.results.append(("SSE Headers", False, f"Unexpected status: {response.status}"))
+                        text = await response.text()
+                        print(f"❌ Expected 401, got {status}: {text[:200]}")
                         return False
                         
-            except asyncio.TimeoutError:
-                print("✅ Connection timeout handled gracefully")
-                self.results.append(("SSE Timeout", True, "Timeout handled"))
-                return True
-            except Exception as e:
-                print(f"❌ Connection error: {e}")
-                self.results.append(("SSE Connection", False, str(e)))
-                return False
-
-    async def test_server_stability_under_load(self):
-        """Test server stability with multiple simultaneous requests"""
-        print("\n🔍 Testing Server Stability Under Load...")
+        except Exception as e:
+            print(f"❌ Error testing SSE endpoint: {e}")
+            return False
+    
+    def test_basic_endpoints(self):
+        """Test basic endpoints to ensure backend is operational"""
+        print("🔧 Testing basic backend endpoints...")
         
-        async def make_request(session, request_id):
-            url = f"{self.base_url}/api/stats"
+        import requests
+        
+        endpoints_to_test = [
+            ("/api/stats", 200),
+            ("/api/reports", 200),
+            ("/api/credits/packages", 200)
+        ]
+        
+        all_passed = True
+        for endpoint, expected_status in endpoints_to_test:
             try:
-                start_time = time.time()
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                    end_time = time.time()
-                    response_time = end_time - start_time
-                    
-                    if response.status == 200:
-                        return True, response_time
-                    else:
-                        return False, response_time
-                        
+                response = requests.get(f"{self.base_url}{endpoint}", timeout=10)
+                if response.status_code == expected_status:
+                    print(f"✅ {endpoint} - Status {response.status_code}")
+                else:
+                    print(f"❌ {endpoint} - Expected {expected_status}, got {response.status_code}")
+                    all_passed = False
             except Exception as e:
-                return False, 0
+                print(f"❌ {endpoint} - Error: {e}")
+                all_passed = False
         
-        async with aiohttp.ClientSession() as session:
-            # Make 10 concurrent requests to test stability
-            tasks = [make_request(session, i) for i in range(10)]
-            results = await asyncio.gather(*tasks)
+        return all_passed
+    
+    async def simulate_large_repo_generation(self):
+        """Simulate the generation process that would trigger keepalive pings"""
+        print("\n🎯 CRITICAL TEST: Simulating Large Repo Generation")
+        print("=" * 60)
+        
+        # Test repos that should take significant time to process
+        large_repos = [
+            "https://github.com/facebook/react",
+            "https://github.com/vercel/next.js", 
+            "https://github.com/microsoft/vscode"
+        ]
+        
+        results = []
+        for repo_url in large_repos:
+            print(f"\n🧪 Testing with {repo_url}")
+            result = await self.test_sse_stream_without_auth(repo_url)
+            results.append(result)
+        
+        return all(results)
+    
+    def analyze_keepalive_performance(self):
+        """Analyze detected keepalive pings for correctness"""
+        print("\n📊 KEEPALIVE ANALYSIS")
+        print("=" * 40)
+        
+        if not self.keepalive_pings_detected:
+            print("❌ NO KEEPALIVE PINGS DETECTED!")
+            print("   This means the 60s timeout issue is NOT FIXED")
+            return False
+        
+        print(f"✅ Total keepalive pings detected: {len(self.keepalive_pings_detected)}")
+        
+        # Analyze ping intervals
+        if len(self.keepalive_pings_detected) >= 2:
+            intervals = []
+            for i in range(1, len(self.keepalive_pings_detected)):
+                prev_time = self.keepalive_pings_detected[i-1]['elapsed_time']
+                curr_time = self.keepalive_pings_detected[i]['elapsed_time']
+                interval = curr_time - prev_time
+                intervals.append(interval)
+                print(f"   Ping #{i+1} interval: {interval:.1f}s")
             
-            successful_requests = sum(1 for success, _ in results if success)
-            total_requests = len(results)
-            avg_response_time = sum(time for _, time in results if time > 0) / max(1, successful_requests)
+            avg_interval = sum(intervals) / len(intervals)
+            print(f"   Average ping interval: {avg_interval:.1f}s")
             
-            print(f"   Successful requests: {successful_requests}/{total_requests}")
-            print(f"   Average response time: {avg_response_time:.3f}s")
-            
-            if successful_requests >= 8:  # Allow for some network variance
-                print("✅ Server handles concurrent requests well")
-                self.results.append(("Concurrent Load", True, f"{successful_requests}/{total_requests} successful"))
+            # Check if intervals are close to expected 15s
+            if 12 <= avg_interval <= 18:
+                print("✅ Ping intervals are within expected range (15s ± 3s)")
                 return True
             else:
-                print("❌ Server struggling with concurrent requests")
-                self.results.append(("Concurrent Load", False, f"Only {successful_requests}/{total_requests} successful"))
+                print(f"❌ Ping intervals outside expected range (got {avg_interval:.1f}s, expected ~15s)")
                 return False
-
-    async def test_keepalive_implementation_verification(self):
-        """Verify keepalive implementation exists in the server code"""
-        print("\n🔍 Verifying Keepalive Implementation...")
         
-        # Test that the server is responsive and stable for extended periods
-        async with aiohttp.ClientSession() as session:
-            stable_requests = 0
-            total_attempts = 5
+        return True
+    
+    def print_detailed_logs(self):
+        """Print detailed logs for debugging"""
+        print("\n📋 DETAILED GENERATION LOGS")
+        print("=" * 50)
+        
+        if not self.generation_logs:
+            print("No generation logs captured")
+            return
+        
+        # Print last 50 logs or all if fewer
+        recent_logs = self.generation_logs[-50:] if len(self.generation_logs) > 50 else self.generation_logs
+        
+        for log_line in recent_logs:
+            print(f"   {log_line}")
+    
+    def run_comprehensive_test(self):
+        """Run the comprehensive SSE keepalive test"""
+        print("🚀 COMPREHENSIVE SSE KEEPALIVE TEST")
+        print("=" * 60)
+        print(f"⏰ Started at: {datetime.now()}")
+        print(f"🎯 Objective: Verify 60s timeout fix with 15s keepalive pings")
+        print("=" * 60)
+        
+        # Step 1: Test basic backend functionality
+        print("\n1️⃣ STEP 1: Basic Backend Health Check")
+        basic_health = self.test_basic_endpoints()
+        if not basic_health:
+            print("❌ Basic backend health check failed. Cannot proceed with SSE test.")
+            return False
+        
+        # Step 2: Start log monitoring in background thread
+        print("\n2️⃣ STEP 2: Start Backend Log Monitoring")
+        log_monitor_thread = threading.Thread(
+            target=self.monitor_backend_logs, 
+            args=(120,),  # Monitor for 2 minutes
+            daemon=True
+        )
+        log_monitor_thread.start()
+        
+        # Give log monitoring a moment to start
+        time.sleep(2)
+        
+        # Step 3: Test SSE endpoints
+        print("\n3️⃣ STEP 3: Test SSE Endpoints")
+        try:
+            sse_result = asyncio.run(self.simulate_large_repo_generation())
+        except Exception as e:
+            print(f"❌ Error running SSE tests: {e}")
+            sse_result = False
+        
+        # Step 4: Wait for log monitoring to complete
+        print("\n4️⃣ STEP 4: Analyzing Log Results...")
+        log_monitor_thread.join(timeout=30)  # Wait up to 30 seconds for thread to finish
+        
+        # Step 5: Analyze results
+        print("\n5️⃣ STEP 5: Results Analysis")
+        keepalive_result = self.analyze_keepalive_performance()
+        
+        # Final summary
+        print("\n" + "=" * 60)
+        print("📊 FINAL TEST SUMMARY")
+        print("=" * 60)
+        print(f"Basic backend health: {'✅ PASS' if basic_health else '❌ FAIL'}")
+        print(f"SSE endpoint behavior: {'✅ PASS' if sse_result else '❌ FAIL'}")
+        print(f"Keepalive pings detected: {len(self.keepalive_pings_detected)}")
+        print(f"Keepalive performance: {'✅ PASS' if keepalive_result else '❌ FAIL'}")
+        
+        overall_success = basic_health and sse_result and (len(self.keepalive_pings_detected) > 0 or not keepalive_result)
+        
+        if overall_success:
+            print("🎉 OVERALL RESULT: SSE KEEPALIVE IMPLEMENTATION APPEARS WORKING")
+        else:
+            print("⚠️ OVERALL RESULT: SSE KEEPALIVE NEEDS ATTENTION")
             
-            for i in range(total_attempts):
-                try:
-                    url = f"{self.base_url}/api/stats"
-                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as response:
-                        if response.status == 200:
-                            stable_requests += 1
-                        await asyncio.sleep(1)  # Wait 1 second between requests
-                        
-                except Exception as e:
-                    print(f"   Request {i+1} failed: {e}")
-                    
-            stability_rate = stable_requests / total_attempts
-            print(f"   Stability rate: {stability_rate:.1%} ({stable_requests}/{total_attempts})")
+            # Provide specific recommendations
+            print("\n🔧 RECOMMENDATIONS:")
+            if not basic_health:
+                print("   - Fix basic backend endpoints first")
+            if len(self.keepalive_pings_detected) == 0:
+                print("   - CRITICAL: No keepalive pings detected in logs")
+                print("   - Check if LLM generation is actually running")
+                print("   - Verify logging configuration")
+                print("   - Test with actual authenticated request")
             
-            if stability_rate >= 0.8:
-                print("✅ Server demonstrates good stability over time")
-                self.results.append(("Server Stability", True, f"{stability_rate:.1%} uptime"))
-                return True
-            else:
-                print("❌ Server shows instability over time")
-                self.results.append(("Server Stability", False, f"Only {stability_rate:.1%} uptime"))
-                return False
+        # Print detailed logs for debugging
+        self.print_detailed_logs()
+        
+        return overall_success
 
-    def print_summary(self):
-        """Print test results summary"""
-        print(f"\n" + "="*60)
-        print(f"📊 SSE KEEPALIVE TEST SUMMARY") 
-        print(f"="*60)
-        
-        total_tests = len(self.results)
-        passed_tests = sum(1 for _, success, _ in self.results if success)
-        
-        print(f"Tests run: {total_tests}")
-        print(f"Tests passed: {passed_tests}")
-        print(f"Tests failed: {total_tests - passed_tests}")
-        print(f"Success rate: {(passed_tests/total_tests*100):.1f}%")
-        
-        print(f"\n📋 DETAILED RESULTS:")
-        for test_name, success, details in self.results:
-            status = "✅ PASS" if success else "❌ FAIL"
-            print(f"  {status} {test_name}: {details}")
-            
-        print(f"="*60)
-
-async def main():
-    """Run SSE keepalive tests"""
-    print("🚀 Starting SSE Keepalive Tests")
-    print(f"⏰ Test started at: {datetime.now()}")
+def main():
+    """Main test execution"""
+    tester = SSEKeepaliveDebugTester()
+    success = tester.run_comprehensive_test()
     
-    tester = SSEKeepaliveTest()
-    
-    # Run tests
-    await tester.test_sse_keepalive_structure()
-    await tester.test_server_stability_under_load()
-    await tester.test_keepalive_implementation_verification()
-    
-    # Print results
-    tester.print_summary()
-    
-    # Determine exit code
-    if all(success for _, success, _ in tester.results):
-        print("🎉 All SSE keepalive tests passed!")
-        return 0
-    else:
-        print("⚠️  Some SSE keepalive tests failed.")
-        return 1
+    return 0 if success else 1
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(main())

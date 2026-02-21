@@ -469,7 +469,6 @@ CRITICAL RULES:
 
 async def generate_report_content(data: dict) -> str:
     """Generate report content using LLM with fallback support and monitoring."""
-    start_time = time.time()
     repo_name = data["repo_info"].get("full_name", "unknown")
     
     prompt = build_report_prompt(data)

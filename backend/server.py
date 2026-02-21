@@ -567,17 +567,19 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             "message": "A report for this repo already exists. View it for free or spend 2 credits to regenerate with latest data."
         }
 
-    # Ensure user exists in DB (race condition: generate can fire before auth/verify completes)
-    user_doc = await db.users.find_one({"uid": user["uid"]}, {"_id": 0})
-    if not user_doc:
-        now = datetime.now(timezone.utc).isoformat()
-        user_doc = {
+    # Ensure user exists in DB (race condition safe with upsert)
+    now = datetime.now(timezone.utc).isoformat()
+    user_doc = await db.users.find_one_and_update(
+        {"uid": user["uid"]},
+        {"$setOnInsert": {
             "uid": user["uid"], "email": user.get("email", ""),
             "display_name": user.get("name", user.get("email", "User").split("@")[0]),
             "credits": 3, "created_at": now, "updated_at": now,
-        }
-        await db.users.insert_one(user_doc)
-        user_doc.pop("_id", None)
+        }},
+        upsert=True,
+        return_document=True,
+        projection={"_id": 0},
+    )
 
     if user_doc.get("credits", 0) < 2:
         raise HTTPException(402, "Insufficient credits. You need 2 credits to generate a report.")

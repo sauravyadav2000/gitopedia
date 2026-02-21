@@ -88,6 +88,9 @@ export default function Header() {
                 <DropdownMenuItem onClick={() => navigate('/credits')} data-testid="menu-credits">
                   <CreditCard className="w-4 h-4 mr-2" /> Buy Credits
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/enterprise/organizations')} data-testid="menu-enterprise">
+                  <Building2 className="w-4 h-4 mr-2" /> My Organizations
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} data-testid="menu-logout">
                   <LogOut className="w-4 h-4 mr-2" /> Log Out

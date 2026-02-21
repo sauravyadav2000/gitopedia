@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Zap, User, LogOut, BookOpen, CreditCard, LayoutDashboard } from 'lucide-react';
+import { Zap, User, LogOut, BookOpen, CreditCard, LayoutDashboard, Building2 } from 'lucide-react';
 
 export default function Header() {
   const { user, profile, logout } = useAuth();
@@ -39,6 +39,14 @@ export default function Header() {
             data-testid="nav-browse"
           >
             Browse Reports
+          </Link>
+          <Link
+            to="/enterprise"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 flex items-center gap-1"
+            data-testid="nav-enterprise"
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            Enterprise
           </Link>
           {user && (
             <Link

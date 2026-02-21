@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -11,11 +11,13 @@ import asyncio
 import httpx
 import base64
 import re
+import secrets
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional
-import uuid
+from uuid import uuid4
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 import time
 import anthropic
 

@@ -148,7 +148,7 @@ export default function EnterpriseCallback() {
     }
   };
 
-  if (loading) {
+  if (loading || !authChecked) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-12">
         <Card>

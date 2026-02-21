@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "gitopedia-4ed70",
+  "private_key_id": "9b539d7fbeeaf6e54c0353f2b502653323d654fa",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCyAeZBGM1HPE0k\nmO0OyJ2bruaS3gT8FgZMPH09MnEk1hwGsWqmA/qeSCZ8ac0XdeR8AuR4LVS9akBn\nbOMV0c1kra8x6oQ5qVAOFTq2JvhoAzgJtaI4yRIb8XHbmx/Gs5ejv/pAYjgELlu2\n6rZO/Uh6C6vZHDQXpy9ghPrmWxX36Gllv8zKQXsqSY49OSIc2qA4c3ZVRpVB9NfM\nmNi0VAWOB8o0XEsidwU1n+sZSr4GUG/MCjzSbA3kyDPru/yEk4hIKDoU67cxPxWg\nOdX5cAZXY0VSN67Ctr9A5Gkmp580FqhfCXsqYHnux4mVD3n1EsXVFctZiKuLLZOx\nwpN02EIvAgMBAAECggEAEzAqOl0qj6G77RSBBUVx29zUJQPCxMu4/RHOLEEaOi7M\nUZphVSj7pIFBiMq83WkLaqTDLQMx7cMc0ylFJ0541f/08SwG+dI6+3GlZQo5X7jt\nGvrV1Eo0Zge2TsZffANS9sdUegk8YZL/tu2BHm2mGOXWLe6g3OXcMQrUou0xponc\nR4CHiaIHXM4QY9GVAekHLriC6jASL+uRX82sre6Ko7jYy5oQNuePUkHENO+s3tmh\nphpyAjKjmeK2zhWjqooYhK5JiMLf7+FeZ0aBBR4hK9ht/PVamy//Dx89H4J2aZt+\nO6Ai7T1b6VZqfsRGvud0Y9w1b3zE8lvxgDL+3jeFIQKBgQDrmxTzDpSJkFlG0fHN\nTJtrBZ3xXMPkdlh2pEIx53fvh/1yjnaS7JYqEQn9lRWFhe9bqs/UX/ZVF6G67APt\nC79VYCPgGVKJ6X6NRnwmi3856geAo5iyuYVrJqdY0NhLHu14d+Y4dPBKeOpxI7Bb\nhHRg7osGYWSBSSbLyImw6O5v4QKBgQDBana0CkpcF2CgWaZsxEmIOlQFC4klOhJb\ntV+Hxu1HNNwaSBoEWL88z0eC2Aw08wQ89gLxQbcMHEy7ic3ZJTzQguvdgVFwAJ/2\ngeU+9j4ec6Rbq3leHHxG476fSIHyLzgWJt28q64S2ABJxgx/NKgPFCS2vSzmlGX7\nYZp4XOY0DwKBgQDWOBeAN82OlpTV86XriK/3SxAkmLf0TjZ5CTi2r0M5o2gqdKYT\nSNHwRbXTv23mDbVon5KAAxCypd4DWvzm1zuMoPF9nQiTJJ5QTbosQcHYIpXXvOfl\n+RD6MBcQhjNjeido1XuZ8ZlZ3T8sx8peK7y1Na9qibscYirINvoaxG+ngQKBgD/G\nxUF0qzRWmQwGw7PVvZFn+lB3j09xKKCI2+k/lPoH2hPodnu8b8KzbpccelnzUBBx\n5mJ7EsqxgjPMqs3RU45FvVSa0amm6xgzmM38EFumMinwDuMTbX9KlY6cMA0VuN7F\nDhSqX4njI6Uv4usHB+uA7uI62tVlVYNgmbjamSXNAoGBAKA/XCOCkceoCvnkNh/S\nGAyEvQey7Bncc80MvYxe8xlDt1PaHlwen9y3HAcKJWM/qIKR7jhEL/rJXg7Mz/hL\npKevg6d7558kF/ExnEzBcgKlGhOwvQvCsTKxAm2+FKd+tOqjG4flsSd/J5go9uQ6\nQGsVLH5EGWhnJKX0uehIgFvz\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@gitopedia-4ed70.iam.gserviceaccount.com",
+  "client_id": "111978426634384637873",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40gitopedia-4ed70.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

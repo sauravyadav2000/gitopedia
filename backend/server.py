@@ -406,19 +406,33 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             "message": "A report for this repo already exists. View it for free or spend 2 credits to regenerate with latest data."
         }
 
-    # Check credits
+    # Ensure user exists in DB (race condition: generate can fire before auth/verify completes)
     user_doc = await db.users.find_one({"uid": user["uid"]}, {"_id": 0})
-    if not user_doc or user_doc.get("credits", 0) < 2:
+    if not user_doc:
+        now = datetime.now(timezone.utc).isoformat()
+        user_doc = {
+            "uid": user["uid"], "email": user.get("email", ""),
+            "display_name": user.get("name", user.get("email", "User").split("@")[0]),
+            "credits": 3, "created_at": now, "updated_at": now,
+        }
+        await db.users.insert_one(user_doc)
+        user_doc.pop("_id", None)
+
+    if user_doc.get("credits", 0) < 2:
         raise HTTPException(402, "Insufficient credits. You need 2 credits to generate a report.")
 
-    # Deduct credits
-    await db.users.update_one(
-        {"uid": user["uid"]},
-        {"$inc": {"credits": -2}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    uid = user["uid"]
 
     async def stream_report():
+        credits_deducted = False
         try:
+            # Deduct credits INSIDE the stream so refund is guaranteed by finally
+            await db.users.update_one(
+                {"uid": uid},
+                {"$inc": {"credits": -2}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            credits_deducted = True
+
             yield f"data: {json.dumps({'type': 'status', 'message': 'Fetching repository data from GitHub...'})}\n\n"
             github_data = await fetch_github_data(owner, repo)
 
@@ -447,7 +461,7 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
                 "stars": github_data["repo_info"]["stargazers_count"],
                 "forks": github_data["repo_info"]["forks_count"],
                 "topics": github_data["repo_info"]["topics"],
-                "generated_by": user["uid"],
+                "generated_by": uid,
                 "generated_at": now,
                 "updated_at": now,
                 "version": 1,
@@ -456,21 +470,28 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             report.pop("_id", None)
 
             await db.credit_transactions.insert_one({
-                "id": str(uuid.uuid4()), "user_id": user["uid"], "amount": -2,
+                "id": str(uuid.uuid4()), "user_id": uid, "amount": -2,
                 "type": "generation", "reference_id": report_id,
                 "description": f"Generated report for {repo_full_name}", "created_at": now,
             })
 
-            updated_user = await db.users.find_one({"uid": user["uid"]}, {"_id": 0})
+            # Mark success — credits stay deducted
+            credits_deducted = False
+
+            updated_user = await db.users.find_one({"uid": uid}, {"_id": 0})
             yield f"data: {json.dumps({'type': 'done', 'report_id': report_id, 'credits_remaining': updated_user.get('credits', 0)})}\n\n"
 
         except HTTPException as e:
-            await db.users.update_one({"uid": user["uid"]}, {"$inc": {"credits": 2}})
+            logger.error(f"Report generation HTTP error: {e.detail}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e.detail)})}\n\n"
         except Exception as e:
-            await db.users.update_one({"uid": user["uid"]}, {"$inc": {"credits": 2}})
             logger.error(f"Report generation error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': 'Report generation failed. Credits have been refunded.'})}\n\n"
+        finally:
+            # Guaranteed refund if credits were deducted but report wasn't saved
+            if credits_deducted:
+                logger.info(f"Refunding 2 credits for user {uid} (generation failed)")
+                await db.users.update_one({"uid": uid}, {"$inc": {"credits": 2}})
 
     return StreamingResponse(stream_report(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"})

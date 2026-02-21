@@ -249,6 +249,7 @@ def main():
     print("\n🔒 Running Authentication Tests...")
     tester.test_user_profile_unauthorized()
     tester.test_reports_generate_unauthorized()
+    tester.test_user_transactions_unauthorized()
     
     # Print results
     tester.print_summary()

@@ -537,21 +537,6 @@ async def generate_report_content(data: dict, use_fast_model: bool = True) -> st
             except Exception as sonnet_error:
                 logger.error(f"[LLM ERROR] All models failed for {repo_name}: {sonnet_error}")
                 raise
-                try:
-                    api_start = time.time()
-                    message = await client.messages.create(
-                        model="claude-3-haiku-20240307",
-                        max_tokens=16000,
-                        system=system_msg,
-                        messages=[{"role": "user", "content": prompt}],
-                    )
-                    api_duration = time.time() - api_start
-                    result = message.content[0].text
-                    logger.info(f"[LLM SUCCESS] Haiku responded in {api_duration:.2f}s ({len(result)} chars) for {repo_name}")
-                    return result
-                except Exception as fallback_error:
-                    logger.error(f"[LLM ERROR] Fallback model also failed for {repo_name}: {fallback_error}")
-                    raise primary_error  # Raise the original error
                 
         except anthropic.BadRequestError as e:
             logger.error(f"Anthropic bad request: {e}")

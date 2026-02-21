@@ -164,6 +164,75 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        <Separator className="my-8" />
+
+        {/* Transaction History */}
+        <div>
+          <h2 className="text-xl font-heading font-semibold mb-4">Transaction History</h2>
+          {(transactions.payments.length === 0 && transactions.credits.length === 0) ? (
+            <div className="text-center py-8 bg-card/30 border border-border/50 rounded-sm" data-testid="no-transactions">
+              <CreditCard className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground">No transactions yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {/* Payment transactions */}
+              {transactions.payments.map((tx) => (
+                <Card key={tx.id} className="bg-card/50 border-border/50" data-testid={`payment-tx-${tx.id}`}>
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-sm flex items-center justify-center ${tx.payment_status === 'paid' ? 'bg-accent/10' : tx.payment_status === 'pending' ? 'bg-yellow-500/10' : 'bg-destructive/10'}`}>
+                        <CreditCard className={`w-4 h-4 ${tx.payment_status === 'paid' ? 'text-accent' : tx.payment_status === 'pending' ? 'text-yellow-500' : 'text-destructive'}`} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">
+                          Credit Purchase — {tx.package_id} package
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(tx.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <Badge variant="outline" className={`text-[10px] ${
+                        tx.payment_status === 'paid' ? 'border-accent/40 text-accent' :
+                        tx.payment_status === 'pending' ? 'border-yellow-500/40 text-yellow-500' :
+                        'border-destructive/40 text-destructive'
+                      }`}>
+                        {tx.payment_status}
+                      </Badge>
+                      <div className="text-right">
+                        <p className="text-sm font-mono font-bold text-foreground">${tx.amount?.toFixed(2)}</p>
+                        <p className="text-xs text-accent">+{tx.credits} credits</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {/* Credit transactions */}
+              {transactions.credits.map((tx) => (
+                <Card key={tx.id} className="bg-card/50 border-border/50" data-testid={`credit-tx-${tx.id}`}>
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-sm flex items-center justify-center ${tx.amount > 0 ? 'bg-accent/10' : 'bg-primary/10'}`}>
+                        {tx.amount > 0 ? <ArrowDownLeft className="w-4 h-4 text-accent" /> : <ArrowUpRight className="w-4 h-4 text-primary" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{tx.description}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(tx.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <p className={`text-sm font-mono font-bold ${tx.amount > 0 ? 'text-accent' : 'text-primary'}`}>
+                      {tx.amount > 0 ? '+' : ''}{tx.amount} credits
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1435,31 +1435,50 @@ async def github_callback(request: GithubCallbackRequest, user=Depends(get_curre
         raise HTTPException(500, f"Failed to complete GitHub authorization: {str(e)}")
 
 
+class ConnectOrganizationRequest(BaseModel):
+    github_org_id: int
+    github_org_login: str
+    github_org_name: str
+    github_token: str
+    avatar_url: Optional[str] = None
+
 @api_router.post("/enterprise/organizations/connect")
 async def connect_organization(
-    github_org_id: int,
-    github_org_login: str,
-    github_org_name: str,
-    github_token: str,
-    avatar_url: Optional[str] = None,
+    request: ConnectOrganizationRequest,
     user=Depends(get_current_user)
 ):
+    """
+    Connect a GitHub organization to the user's account
+    """
+    user_uid = user.get("uid", "unknown")
+    logger.info(f"[ORG-CONNECT] User {user_uid[:8]} connecting org: {request.github_org_login}")
+    
     try:
         existing = await db.organizations.find_one(
-            {"github_org_id": github_org_id, "owner_user_id": user["uid"]}, {"_id": 0}
+            {"github_org_id": request.github_org_id, "owner_user_id": user_uid}, {"_id": 0}
         )
         if existing:
+            logger.info(f"[ORG-CONNECT] Organization already exists: {request.github_org_login}")
             return {"message": "Organization already connected", "organization": existing}
 
+        # Fetch organization details from GitHub
+        logger.info(f"[ORG-CONNECT] Fetching org details from GitHub API...")
         async with httpx.AsyncClient() as client:
             org_resp = await client.get(
-                f"https://api.github.com/orgs/{github_org_login}",
-                headers={"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github.v3+json", "User-Agent": "Gitopedia/1.0"}
+                f"https://api.github.com/orgs/{request.github_org_login}",
+                headers={
+                    "Authorization": f"Bearer {request.github_token}", 
+                    "Accept": "application/vnd.github.v3+json", 
+                    "User-Agent": "Gitopedia/1.0"
+                }
             )
             if org_resp.status_code != 200:
+                logger.error(f"[ORG-CONNECT] GitHub API error: {org_resp.status_code} - {org_resp.text}")
                 raise HTTPException(403, "Cannot access this organization. Please check permissions.")
             org_data = org_resp.json()
             total_repos = org_data.get("public_repos", 0)
+
+        logger.info(f"[ORG-CONNECT] Organization has {total_repos} public repos")
 
         if total_repos <= 50:
             pricing_tier, price = "small", 50
@@ -1473,12 +1492,12 @@ async def connect_organization(
 
         organization = {
             "id": org_id,
-            "github_org_id": github_org_id,
-            "github_org_login": github_org_login,
-            "github_org_name": github_org_name or github_org_login,
-            "avatar_url": avatar_url or org_data.get("avatar_url"),
-            "owner_user_id": user["uid"],
-            "access_token": github_token,  # TODO: encrypt before storing (BUG-5)
+            "github_org_id": request.github_org_id,
+            "github_org_login": request.github_org_login,
+            "github_org_name": request.github_org_name or request.github_org_login,
+            "avatar_url": request.avatar_url or org_data.get("avatar_url"),
+            "owner_user_id": user_uid,
+            "access_token": request.github_token,  # TODO: encrypt before storing (BUG-5)
             "total_repos": total_repos,
             "analyzed_repos": 0,
             "last_analyzed_at": None,
@@ -1493,9 +1512,13 @@ async def connect_organization(
             "updated_at": now
         }
 
-        await db.organizations.insert_one(organization)
+        logger.info(f"[ORG-CONNECT] Inserting organization {org_id} into database...")
+        result = await db.organizations.insert_one(organization)
+        logger.info(f"[ORG-CONNECT] Organization inserted with MongoDB ID: {result.inserted_id}")
+        
         organization.pop("_id", None)
 
+        logger.info(f"[ORG-CONNECT] SUCCESS - Organization {request.github_org_login} connected")
         return {
             "message": "Organization connected successfully",
             "organization": organization,
@@ -1504,8 +1527,8 @@ async def connect_organization(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Connect organization error: {e}")
-        raise HTTPException(500, "Failed to connect organization")
+        logger.error(f"[ORG-CONNECT] Unexpected error: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(500, f"Failed to connect organization: {str(e)}")
 
 
 @api_router.get("/enterprise/organizations")

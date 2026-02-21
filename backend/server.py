@@ -317,27 +317,53 @@ RULES:
 
 async def generate_report_content(data: dict) -> str:
     prompt = build_report_prompt(data)
-    llm_key = os.environ.get('EMERGENT_LLM_KEY')
-    if not llm_key:
-        raise HTTPException(500, "LLM API key not configured")
+    system_msg = "You are an expert software architect and technical writer. You analyze GitHub repositories and produce detailed, accurate technical reports. Your reports are clear, well-structured, and highly valuable to developers."
 
-    chat = LlmChat(
-        api_key=llm_key,
-        session_id=f"report-{uuid.uuid4()}",
-        system_message="You are an expert software architect and technical writer. You analyze GitHub repositories and produce detailed, accurate technical reports. Your reports are clear, well-structured, and highly valuable to developers."
-    ).with_model("anthropic", "claude-sonnet-4-6")
-
-    try:
-        response = await chat.send_message(UserMessage(text=prompt))
-        return response
-    except Exception as e:
-        error_str = str(e).lower()
-        if "budget" in error_str and "exceeded" in error_str:
-            raise HTTPException(503, "AI service budget exceeded. Please try again later or contact support to add balance (Profile > Universal Key > Add Balance).")
-        if "rate" in error_str and "limit" in error_str:
+    # Priority 1: Direct Anthropic API key
+    anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
+    if anthropic_key:
+        try:
+            logger.info("Using direct Anthropic API key for generation")
+            client = anthropic.AsyncAnthropic(api_key=anthropic_key)
+            message = await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=8000,
+                system=system_msg,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return message.content[0].text
+        except anthropic.BadRequestError as e:
+            logger.error(f"Anthropic bad request: {e}")
+            raise HTTPException(502, f"AI service error: {str(e)[:200]}")
+        except anthropic.AuthenticationError as e:
+            logger.error(f"Anthropic auth error: {e}")
+            raise HTTPException(502, "Invalid Anthropic API key.")
+        except anthropic.RateLimitError:
             raise HTTPException(429, "AI service rate limited. Please try again in a few minutes.")
-        logger.error(f"LLM generation error: {e}")
-        raise HTTPException(502, f"AI service error: {str(e)[:200]}")
+        except Exception as e:
+            logger.error(f"Anthropic error, will try Emergent fallback: {e}")
+
+    # Priority 2: Emergent LLM key fallback
+    emergent_key = os.environ.get('EMERGENT_LLM_KEY')
+    if emergent_key:
+        try:
+            logger.info("Using Emergent LLM key for generation")
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            chat = LlmChat(
+                api_key=emergent_key,
+                session_id=f"report-{uuid.uuid4()}",
+                system_message=system_msg,
+            ).with_model("anthropic", "claude-sonnet-4-6")
+            response = await chat.send_message(UserMessage(text=prompt))
+            return response
+        except Exception as e:
+            error_str = str(e).lower()
+            if "budget" in error_str and "exceeded" in error_str:
+                raise HTTPException(503, "AI service budget exceeded. Add balance at Profile > Universal Key > Add Balance.")
+            logger.error(f"Emergent LLM error: {e}")
+            raise HTTPException(502, f"AI service error: {str(e)[:200]}")
+
+    raise HTTPException(500, "No LLM API key configured. Set ANTHROPIC_API_KEY or EMERGENT_LLM_KEY in .env")
 
 
 # ===== Auth Routes =====

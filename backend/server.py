@@ -829,24 +829,27 @@ async def check_checkout_status(session_id: str, request: Request, user=Depends(
 
     status = await stripe_checkout.get_checkout_status(session_id)
 
-    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if tx and status.payment_status == "paid" and tx.get("payment_status") != "paid":
-        now = datetime.now(timezone.utc).isoformat()
-        credits_to_add = tx.get("credits", 0)
-        await db.users.update_one(
-            {"uid": user["uid"]},
-            {"$inc": {"credits": credits_to_add}, "$set": {"updated_at": now}}
+    # Atomic update: only credit if payment_status transitions from non-paid to paid
+    if status.payment_status == "paid":
+        tx = await db.payment_transactions.find_one_and_update(
+            {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+            {"$set": {"status": "complete", "payment_status": "paid", "updated_at": datetime.now(timezone.utc).isoformat()}},
+            projection={"_id": 0},
         )
-        await db.payment_transactions.update_one(
-            {"session_id": session_id},
-            {"$set": {"status": "complete", "payment_status": "paid", "updated_at": now}}
-        )
-        await db.credit_transactions.insert_one({
-            "id": str(uuid.uuid4()), "user_id": user["uid"], "amount": credits_to_add,
-            "type": "purchase", "reference_id": tx.get("id"),
-            "description": f"Purchased {credits_to_add} credits ({tx.get('package_id')} package)", "created_at": now,
-        })
-    elif tx:
+        if tx:
+            credits_to_add = tx.get("credits", 0)
+            now = datetime.now(timezone.utc).isoformat()
+            await db.users.update_one(
+                {"uid": user["uid"]},
+                {"$inc": {"credits": credits_to_add}, "$set": {"updated_at": now}}
+            )
+            await db.credit_transactions.insert_one({
+                "id": str(uuid.uuid4()), "user_id": user["uid"], "amount": credits_to_add,
+                "type": "purchase", "reference_id": tx.get("id"),
+                "description": f"Purchased {credits_to_add} credits ({tx.get('package_id')} package)", "created_at": now,
+            })
+            logger.info(f"Credited {credits_to_add} credits to user {user['uid']} for session {session_id}")
+    else:
         await db.payment_transactions.update_one(
             {"session_id": session_id},
             {"$set": {"status": status.status, "payment_status": status.payment_status, "updated_at": datetime.now(timezone.utc).isoformat()}}

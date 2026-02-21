@@ -326,8 +326,17 @@ async def generate_report_content(data: dict) -> str:
         system_message="You are an expert software architect and technical writer. You analyze GitHub repositories and produce detailed, accurate technical reports. Your reports are clear, well-structured, and highly valuable to developers."
     ).with_model("anthropic", "claude-sonnet-4-6")
 
-    response = await chat.send_message(UserMessage(text=prompt))
-    return response
+    try:
+        response = await chat.send_message(UserMessage(text=prompt))
+        return response
+    except Exception as e:
+        error_str = str(e).lower()
+        if "budget" in error_str and "exceeded" in error_str:
+            raise HTTPException(503, "AI service budget exceeded. Please try again later or contact support to add balance (Profile > Universal Key > Add Balance).")
+        if "rate" in error_str and "limit" in error_str:
+            raise HTTPException(429, "AI service rate limited. Please try again in a few minutes.")
+        logger.error(f"LLM generation error: {e}")
+        raise HTTPException(502, f"AI service error: {str(e)[:200]}")
 
 
 # ===== Auth Routes =====

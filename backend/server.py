@@ -99,6 +99,13 @@ class EditRequest(BaseModel):
 class GithubCallbackRequest(BaseModel):
     code: str
 
+class ConnectOrganizationRequest(BaseModel):
+    github_org_id: int
+    github_org_login: str
+    github_org_name: str
+    github_token: str
+    avatar_url: Optional[str] = None
+
 
 # ===== Helper Functions =====
 async def check_repo_freshness(report: dict, owner: str, repo: str) -> dict:

@@ -322,64 +322,118 @@ Include all tables/models you can identify from the file structure and config fi
 ## Database Schema
 Analyze if there are any database dependencies (e.g., databases listed in config files, ORM imports, connection strings). If found, describe the likely schema. If no database is detected, state "No database schema detected in this repository." """
 
-    return f"""You are analyzing the GitHub repository "{repo['full_name']}". Generate a concise technical report.
+    return f"""You are performing a deep technical analysis of a GitHub repository. Generate an exhaustive, expert-level Markdown report. This report should be useful to a senior engineer joining the project for the first time.
 
-## REPOSITORY DATA
+## RAW DATA
 
-### Metadata
-- Name: {repo['full_name']}
-- Description: {repo['description'] or 'N/A'}
-- Language: {repo['language'] or 'N/A'} | Stars: {repo['stargazers_count']} | Forks: {repo['forks_count']}
+### Repository Metadata
+- Full Name: {repo['full_name']}
+- Description: {repo['description'] or 'No description provided'}
+- Primary Language: {repo['language'] or 'N/A'}
+- Stars: {repo['stargazers_count']} | Forks: {repo['forks_count']} | Open Issues: {repo['open_issues_count']} | Watchers: {repo.get('watchers_count', 'N/A')}
 - Created: {repo['created_at']} | Last Push: {repo['pushed_at']}
-- License: {repo['license'] or 'Not specified'}
+- Default Branch: {repo['default_branch']} | License: {repo['license'] or 'Not specified'}
+- Topics: {', '.join(repo['topics']) if repo['topics'] else 'None'}
+- Repository Size: {repo['size']} KB
 
-### Languages
-{languages_str or 'No language data'}
+### Languages Breakdown
+{languages_str or 'No language data available'}
 
-### File Structure (key files)
-{tree_str or 'Unable to retrieve files'}
+### Complete File Tree
+{tree_str or 'Unable to retrieve file structure'}
+
+### README Content
+{data['readme'] or 'No README found'}
 
 ### Configuration Files
-{configs_str or 'No config files'}
+{configs_str or 'No configuration files found'}
 
-### README (excerpt)
-{data['readme'][:2000] if data['readme'] else 'No README'}
+### Top Contributors
+{contribs_str or 'No contributor data available'}
+
+### Recent Commits (Last 10)
+{commits_str or 'No recent commit data'}
 
 ---
 
-## GENERATE REPORT WITH THESE SECTIONS:
+## REPORT INSTRUCTIONS
 
-### 1. Overview
-2-3 sentences: what it does, who it's for, maturity level.
+Generate a comprehensive report with EXACTLY these sections in order. Start directly with the first heading. Use Mermaid diagram syntax where specified.
 
-### 2. Tech Stack
-Table format: **Component** | **Technology**
-Include: Language, Framework, Database, Build Tool, Testing.
+## Overview
+4-6 sentences providing a thorough summary: what the project does, who it's for, what problem it solves, its maturity level, and where it fits in the ecosystem. Mention notable adoption metrics if the star/fork count is significant.
 
-### 3. Directory Structure
-ASCII tree with annotations showing key directories and their purpose.
+## Tech Stack
+A detailed markdown table with columns: **Layer** | **Technology** | **Version** (if detectable) | **Purpose**
+Include ALL layers you can identify: Language(s), Runtime, Framework(s), Database(s), ORM/ODM, Authentication, API Protocol, Frontend, CSS/Styling, State Management, Testing, CI/CD, Build Tools, Package Manager, Linting/Formatting, Containerization, Monitoring/Logging, Documentation tools. Only include what is confirmed by the data.
 
-### 4. Architecture
-1-2 paragraphs describing the architecture pattern and design approach.
-Include a simple Mermaid flowchart if components interact.
+## Directory Structure
+Provide a detailed **ASCII directory tree** showing the project's folder structure. Include key files and annotate the purpose of each major directory with inline comments:
 
-### 5. Key Features
-Bullet list of 5-7 main capabilities based on code structure.
+```
+project-root/
+├── src/                    # Main source code
+│   ├── api/                # API route handlers
+│   ├── models/             # Data models
+│   └── utils/              # Shared utilities
+├── tests/                  # Test suites
+├── config/                 # Configuration
+├── docs/                   # Documentation
+├── Dockerfile              # Container definition
+└── package.json            # Dependencies
+```
 
-### 6. Development Setup
-Quick start guide: prerequisites, install, run, test.
+After the tree, provide a prose explanation of the architecture implied by the directory layout.
 
+## Architecture & Design
+Deep analysis of the system architecture. Identify and explain:
+- Architecture pattern (monolith, microservices, modular monolith, serverless, etc.)
+- Design patterns used (MVC, CQRS, event sourcing, repository pattern, etc.)
+- Layer separation and boundaries
+- Key abstractions and interfaces
+
+Include a Mermaid flowchart showing the high-level system architecture:
+
+```mermaid
+graph TD
+    A[Component] -->|protocol| B[Component]
+    B --> C[Component]
+```
+
+## Service Communication & Dependencies
+Detailed analysis of how components interact:
+- Internal service calls (function calls, gRPC, REST, GraphQL)
+- External API integrations
+- Message queues or event buses
+- Shared state or databases
+- Authentication/authorization flow
+
+Include a Mermaid sequence diagram showing a key workflow:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Service
+    participant DB
+    Client->>API: Request
+    API->>Service: Process
+    Service->>DB: Query
+    DB-->>Service: Result
+    Service-->>API: Response
+    API-->>Client: Response
+```
 {db_section}
 
-## RULES:
-- Be concise and technical
-- Use Mermaid syntax correctly (no parentheses in labels)
-- Only state facts from the data
-- Start directly with "## Overview"
-"""
+## Infrastructure & Deployment
+Detailed deployment analysis:
+- Container setup (Docker, docker-compose configurations)
+- CI/CD pipeline (GitHub Actions, GitLab CI, etc.)
+- Cloud provider hints (AWS, GCP, Azure, Vercel, etc.)
+- Environment configuration management
+- Scaling considerations visible in the codebase
 
-
-async def generate_report_content(data: dict, use_fast_model: bool = True) -> str:
+## Development Workflow
 Step-by-step guide to run this project locally based on the config files:
 1. Prerequisites (runtime versions, tools needed)
 2. Installation steps

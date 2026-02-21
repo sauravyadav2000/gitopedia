@@ -912,12 +912,16 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
                 logger.info(f"[NEW REPORT] Created v1 for {repo_full_name}")
             report.pop("_id", None)
 
+            # Record credit transaction
+            transaction_type = "upgrade" if is_upgrade else "generation"
+            transaction_desc = f"Upgraded report for {repo_full_name} (v{report['version']})" if is_upgrade else f"Generated report for {repo_full_name}"
+            
             await record_credit_transaction(
                 user_id=uid,
                 amount=-2,
-                tx_type="generation",
+                tx_type=transaction_type,
                 reference_id=report_id,
-                description=f"Generated report for {repo_full_name}",
+                description=transaction_desc,
                 timestamp=now
             )
 

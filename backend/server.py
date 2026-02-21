@@ -748,15 +748,26 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
 
     repo_full_name = f"{owner}/{repo}"
 
-    # Dedup check
+    # Check if report exists and if it's upgradeable
     existing = await db.reports.find_one({"repo_full_name": repo_full_name}, {"_id": 0})
+    is_upgrade = False
+    
     if existing:
-        return {
-            "exists": True,
-            "report": existing,
-            "message": "A report for this repo already exists. View it for free or spend 2 credits to regenerate with latest data."
-        }
-
+        # Check if can upgrade
+        freshness = await check_repo_freshness(existing, owner, repo)
+        
+        if not freshness["can_upgrade"]:
+            return {
+                "exists": True,
+                "report": existing,
+                "can_upgrade": False,
+                "message": f"A report for this repo already exists. {freshness['reason']}"
+            }
+        
+        # Can upgrade!
+        is_upgrade = True
+        logger.info(f"[UPGRADE] User {user['uid']} upgrading report for {repo_full_name}")
+    
     # Ensure user exists in DB (race condition safe with upsert)
     now = datetime.now(timezone.utc).isoformat()
     user_doc = await db.users.find_one_and_update(
@@ -775,6 +786,7 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
         raise HTTPException(402, "Insufficient credits. You need 2 credits to generate a report.")
 
     uid = user["uid"]
+    user_name = user_doc.get("display_name", "Unknown User")
 
     async def stream_report():
         credits_deducted = False

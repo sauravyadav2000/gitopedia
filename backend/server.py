@@ -850,9 +850,14 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
                 yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
                 await asyncio.sleep(0.012)
 
-            # Save report
-            report_id = str(uuid.uuid4())
+            # Save or update report with ownership tracking
+            report_id = existing["id"] if is_upgrade else str(uuid.uuid4())
             now = datetime.now(timezone.utc).isoformat()
+            
+            # Get latest commit info for tracking
+            latest_commit_sha = github_data["recent_commits"][0].get("sha", "") if github_data.get("recent_commits") else ""
+            latest_commit_date = github_data["recent_commits"][0].get("date", now) if github_data.get("recent_commits") else now
+            
             report = {
                 "id": report_id,
                 "repo_full_name": repo_full_name,
@@ -864,12 +869,47 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
                 "stars": github_data["repo_info"]["stargazers_count"],
                 "forks": github_data["repo_info"]["forks_count"],
                 "topics": github_data["repo_info"]["topics"],
-                "generated_by": uid,
+                
+                # Ownership fields
+                "current_owner_id": uid,
+                "current_owner_name": user_name,
+                
+                # Versioning fields
+                "generated_by": uid,  # Kept for backward compatibility
                 "generated_at": now,
                 "updated_at": now,
-                "version": 1,
+                "version": (existing.get("version", 0) + 1) if is_upgrade else 1,
+                
+                # Freshness tracking
+                "repo_last_commit_sha": latest_commit_sha,
+                "repo_last_commit_date": latest_commit_date,
             }
-            await db.reports.insert_one(report)
+            
+            if is_upgrade:
+                # Archive previous owner to history
+                previous_owner = {
+                    "user_id": existing.get("current_owner_id"),
+                    "user_name": existing.get("current_owner_name"),
+                    "generated_at": existing.get("generated_at"),
+                    "version": existing.get("version", 1),
+                    "commit_sha": existing.get("repo_last_commit_sha")
+                }
+                
+                previous_owners = existing.get("previous_owners", [])
+                previous_owners.append(previous_owner)
+                report["previous_owners"] = previous_owners
+                
+                # Update existing report
+                await db.reports.update_one(
+                    {"id": report_id},
+                    {"$set": report}
+                )
+                logger.info(f"[UPGRADE SUCCESS] Report upgraded to v{report['version']} for {repo_full_name}")
+            else:
+                # New report
+                report["previous_owners"] = []
+                await db.reports.insert_one(report)
+                logger.info(f"[NEW REPORT] Created v1 for {repo_full_name}")
             report.pop("_id", None)
 
             await record_credit_transaction(

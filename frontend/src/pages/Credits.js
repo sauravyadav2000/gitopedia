@@ -37,6 +37,7 @@ export default function Credits() {
     if (attempts >= 8) {
       setVerifying(false);
       toast.error('Payment verification timed out. Contact support if you were charged.');
+      setSearchParams({}, { replace: true });
       return;
     }
     try {

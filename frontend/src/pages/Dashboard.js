@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Zap, FileText, Star, GitFork, CreditCard, ExternalLink, Clock } from 'lucide-react';
+import { Zap, FileText, Star, GitFork, CreditCard, ExternalLink, Clock, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const API = process.env.REACT_APP_BACKEND_URL;

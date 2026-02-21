@@ -35,33 +35,31 @@ Build a full-stack web application called "Gitopedia" — a GitHub repository in
 
 ## What's Been Implemented (Phase 1 - Feb 2026)
 ### Backend
-- Firebase auth token verification + user creation with 3 free credits
-- User profile and reports endpoints
+- Firebase auth token verification + user creation with 3 free credits (upsert, race-safe)
+- User profile, reports, and transaction history endpoints
 - GitHub data fetching (repo info, README, file tree, languages, contributors, commits, config files)
 - GitHub data caching in MongoDB (1 hour TTL)
-- Claude report generation with structured prompt
+- Claude report generation with **deeply enhanced prompt** — Mermaid diagrams, directory trees, security/dependency/code quality analysis
+- Direct Anthropic API key support with Emergent LLM fallback
 - SSE streaming for real-time report delivery
 - Report CRUD: check, generate, list/search, get, edit, regenerate
-- Credit deduction with rollback on failure
-- Stripe checkout integration with payment polling
+- Credit deduction with **guaranteed refund** via finally block
+- **Atomic** Stripe checkout with find_one_and_update (prevents double-crediting)
 - Stripe webhook handling
-- Report deduplication by repo_full_name
-- Private repo detection
-- File size handling (>1MB skip)
+- Report deduplication by repo_full_name (unique index)
+- Private repo detection, file size handling (>1MB skip)
+- Unique indexes on users.uid and reports.repo_full_name
 
 ### Frontend
-- Landing page with hero section, URL input, recent reports, stats
+- Landing page with hero, URL input, recent reports, stats
 - Auth page with Firebase email/password login/signup
-- Report generation page with SSE streaming and blinking cursor
-- Report view page with TOC sidebar, share, regenerate, edit buttons
+- Report generation page with SSE streaming + blinking cursor
+- Report view page with **Mermaid diagram rendering** (dark-themed), TOC sidebar, share/regenerate/edit
 - Browse/search reports page with pagination
-- User dashboard with credit balance, reports list
-- Credits purchase page with 3 pricing tiers + Stripe checkout
+- User dashboard with credit balance, reports list, **payment + credit transaction history**
+- Credits page with 3 pricing tiers + Stripe checkout (**fixed: polledRef prevents double-polling, URL cleared after success**)
 - Report editor with markdown textarea + live preview
-- Global header with credit badge, user menu, navigation
-- Beautiful dark theme (Outfit/Manrope/JetBrains Mono fonts)
-- Custom markdown rendering styles
-- Print-friendly report styles
+- Beautiful dark theme with custom Mermaid styles
 
 ## Prioritized Backlog
 ### P0 (Critical)

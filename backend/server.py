@@ -1577,9 +1577,16 @@ async def get_organization(org_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/enterprise/organizations/{org_id}/analyze")
 async def start_organization_analysis(org_id: str, user=Depends(get_current_user)):
+    """
+    Start wiki generation analysis for an organization (with payment if needed)
+    """
+    logger.info(f"[ANALYZE] User {user['uid'][:8]} requesting analysis for org {org_id}")
+    
     if not STRIPE_AVAILABLE:
+        logger.error("[ANALYZE] Stripe library not available")
         raise HTTPException(503, "Payment processing is not available.")
     if not CELERY_AVAILABLE:
+        logger.error("[ANALYZE] Celery not available")
         raise HTTPException(503, "Background analysis tasks are not available.")
 
     try:
@@ -1587,11 +1594,24 @@ async def start_organization_analysis(org_id: str, user=Depends(get_current_user
             {"id": org_id, "owner_user_id": user["uid"]}, {"_id": 0}
         )
         if not org:
+            logger.error(f"[ANALYZE] Organization {org_id} not found for user {user['uid'][:8]}")
             raise HTTPException(404, "Organization not found")
 
+        logger.info(f"[ANALYZE] Organization: {org['github_org_name']}, Payment status: {org.get('payment_status')}")
+
         if org.get("payment_status") != "paid":
-            # FIX BUG-7: use top-level stripe_lib; run sync Stripe call in executor
-            stripe_lib.api_key = os.environ.get('STRIPE_API_KEY')
+            # Check if Stripe API key is valid
+            stripe_key = os.environ.get('STRIPE_API_KEY')
+            if not stripe_key or stripe_key == 'sk_test_emergent' or len(stripe_key) < 20:
+                logger.error(f"[ANALYZE] Invalid Stripe API key: {stripe_key[:15] if stripe_key else 'MISSING'}")
+                raise HTTPException(
+                    503, 
+                    "Payment system is not configured. Please contact the administrator to set up a valid Stripe API key."
+                )
+            
+            logger.info(f"[ANALYZE] Creating Stripe checkout session for ${org['paid_amount']}")
+            stripe_lib.api_key = stripe_key
+            
             session = await anyio.to_thread.run_sync(
                 lambda: stripe_lib.checkout.Session.create(
                     payment_method_types=['card'],
@@ -1614,6 +1634,7 @@ async def start_organization_analysis(org_id: str, user=Depends(get_current_user
             )
 
             await db.organizations.update_one({"id": org_id}, {"$set": {"stripe_session_id": session.id}})
+            logger.info(f"[ANALYZE] Checkout session created: {session.id}")
             return {"requires_payment": True, "checkout_url": session.url, "session_id": session.id, "amount": org["paid_amount"]}
 
         active_job = await db.analysis_jobs.find_one(

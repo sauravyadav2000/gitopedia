@@ -722,9 +722,21 @@ async def check_report(req: GenerateRequest):
 
     repo_full_name = f"{owner}/{repo}"
     existing = await db.reports.find_one({"repo_full_name": repo_full_name}, {"_id": 0})
-    if existing:
-        return {"exists": True, "report": existing}
-    return {"exists": False}
+    
+    if not existing:
+        return {"exists": False}
+    
+    # Check if report can be upgraded
+    freshness = await check_repo_freshness(existing, owner, repo)
+    
+    return {
+        "exists": True,
+        "report": existing,
+        "can_upgrade": freshness["can_upgrade"],
+        "upgrade_reason": freshness["reason"],
+        "days_old": freshness.get("days_old", 0),
+        "new_commits_count": freshness.get("new_commits_count", 0)
+    }
 
 
 @api_router.post("/reports/generate")

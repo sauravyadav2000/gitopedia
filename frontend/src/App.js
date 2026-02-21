@@ -11,6 +11,11 @@ import Browse from '@/pages/Browse';
 import Dashboard from '@/pages/Dashboard';
 import Credits from '@/pages/Credits';
 import EditReport from '@/pages/EditReport';
+import EnterpriseLanding from '@/pages/EnterpriseLanding';
+import EnterpriseCallback from '@/pages/EnterpriseCallback';
+import OrganizationsList from '@/pages/OrganizationsList';
+import OrganizationDetail from '@/pages/OrganizationDetail';
+import WikiViewer from '@/pages/WikiViewer';
 
 function App() {
   return (
@@ -28,6 +33,15 @@ function App() {
             <Route path="/credits" element={<Credits />} />
             <Route path="/credits/success" element={<Credits />} />
             <Route path="/edit/:id" element={<EditReport />} />
+            
+            {/* Enterprise Routes */}
+            <Route path="/enterprise" element={<EnterpriseLanding />} />
+            <Route path="/enterprise/callback" element={<EnterpriseCallback />} />
+            <Route path="/enterprise/organizations" element={<OrganizationsList />} />
+            <Route path="/enterprise/organizations/:id" element={<OrganizationDetail />} />
+            
+            {/* Public Wiki Route */}
+            <Route path="/wiki/:orgLogin/:token" element={<WikiViewer />} />
           </Routes>
           <Toaster position="bottom-right" theme="dark" />
         </div>

@@ -295,10 +295,32 @@ export default function ReportView() {
 
             <Separator className="mb-8 no-print" />
 
+            {/* Ownership Banner */}
+            <OwnershipBanner report={report} />
+
+            {/* Upgrade Alert */}
+            {upgradeInfo && user && (
+              <UpgradeAlert
+                canUpgrade={upgradeInfo.can_upgrade}
+                upgradeReason={upgradeInfo.upgrade_reason}
+                daysOld={upgradeInfo.days_old}
+                newCommitsCount={upgradeInfo.new_commits_count}
+                onUpgrade={handleUpgrade}
+                isUpgrading={upgrading}
+              />
+            )}
+
             {/* Report content */}
             <div className="bg-card/30 border border-border/50 rounded-sm p-6 md:p-10">
-              <StreamingMarkdown content={displayContent} isStreaming={regenerating} />
+              <StreamingMarkdown content={displayContent} isStreaming={regenerating || upgrading} />
             </div>
+
+            {/* Version History */}
+            {!upgrading && !regenerating && (
+              <div className="mt-8">
+                <VersionHistory reportId={id} />
+              </div>
+            )}
           </motion.div>
         </main>
       </div>

@@ -449,7 +449,7 @@ async def generate_report_content(data: dict) -> str:
     if anthropic_key:
         try:
             logger.info("Using direct Anthropic API key for generation")
-            client = anthropic.AsyncAnthropic(api_key=anthropic_key)
+            client = anthropic.AsyncAnthropic(api_key=anthropic_key, timeout=300.0)
             message = await client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=16000,

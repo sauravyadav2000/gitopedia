@@ -468,39 +468,54 @@ CRITICAL RULES:
 
 
 async def generate_report_content(data: dict) -> str:
+    """Generate report content using LLM with fallback support and monitoring."""
+    start_time = time.time()
+    repo_name = data["repo_info"].get("full_name", "unknown")
+    
     prompt = build_report_prompt(data)
+    prompt_tokens = len(prompt) // 4  # Rough estimate
+    logger.info(f"[LLM] Prompt prepared for {repo_name} (~{prompt_tokens} tokens)")
+    
     system_msg = "You are a world-class software architect and technical writer performing deep repository analysis. You produce exhaustive, expert-level technical reports with Mermaid diagrams, ASCII directory trees, and actionable insights. Your reports are the gold standard for understanding any codebase."
 
     # Priority 1: Direct Anthropic API key
     anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
     if anthropic_key:
         try:
-            logger.info("Using direct Anthropic API key for generation")
+            logger.info(f"[LLM] Using direct Anthropic API for {repo_name}")
             client = anthropic.AsyncAnthropic(api_key=anthropic_key, timeout=300.0)
             
             # Try primary model first (Claude Sonnet 4)
             try:
-                logger.info("Attempting generation with primary model: claude-sonnet-4-20250514")
+                api_start = time.time()
+                logger.info(f"[LLM] Calling claude-sonnet-4 for {repo_name}")
                 message = await client.messages.create(
                     model="claude-sonnet-4-20250514",
                     max_tokens=16000,
                     system=system_msg,
                     messages=[{"role": "user", "content": prompt}],
                 )
-                return message.content[0].text
+                api_duration = time.time() - api_start
+                result = message.content[0].text
+                logger.info(f"[LLM SUCCESS] claude-sonnet-4 responded in {api_duration:.2f}s ({len(result)} chars) for {repo_name}")
+                return result
             except (anthropic.RateLimitError, anthropic.InternalServerError, Exception) as primary_error:
                 # Fallback to faster, cheaper model
-                logger.warning(f"Primary model failed ({type(primary_error).__name__}), falling back to Haiku")
+                logger.warning(f"[LLM FALLBACK] Primary model failed ({type(primary_error).__name__}), trying Haiku for {repo_name}")
                 try:
+                    api_start = time.time()
                     message = await client.messages.create(
                         model="claude-3-haiku-20240307",
                         max_tokens=16000,
                         system=system_msg,
                         messages=[{"role": "user", "content": prompt}],
                     )
-                    return message.content[0].text
+                    api_duration = time.time() - api_start
+                    result = message.content[0].text
+                    logger.info(f"[LLM SUCCESS] Haiku responded in {api_duration:.2f}s ({len(result)} chars) for {repo_name}")
+                    return result
                 except Exception as fallback_error:
-                    logger.error(f"Fallback model also failed: {fallback_error}")
+                    logger.error(f"[LLM ERROR] Fallback model also failed for {repo_name}: {fallback_error}")
                     raise primary_error  # Raise the original error
                 
         except anthropic.BadRequestError as e:

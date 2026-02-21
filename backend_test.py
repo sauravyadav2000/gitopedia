@@ -10,7 +10,7 @@ from datetime import datetime
 import re
 
 class GitopediaAPITester:
-    def __init__(self, base_url="https://report-gen-staging-1.preview.emergentagent.com"):
+    def __init__(self, base_url="https://repo-intel-dev.preview.emergentagent.com"):
         self.base_url = base_url
         self.token = None
         self.tests_run = 0

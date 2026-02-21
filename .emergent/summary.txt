@@ -1,199 +1,152 @@
 <analysis>**original_problem_statement:**
-Build a full-stack web application called Gitopedia — a GitHub repository intelligence tool. Users input a GitHub repo URL, and the system uses an LLM (Claude) to generate a structured Markdown report. Reports are public and free to read, while generating and editing them costs credits. The application must support a credit-based economy with Stripe integration for purchasing credits.
+Build a full-stack web application called Gitopedia, a GitHub repository intelligence tool. Users input a repo URL, and the system uses an LLM (Claude) to generate a structured report. The app uses a credit-based system with Stripe for monetization and Firebase for authentication.
 
 **PRODUCT REQUIREMENTS:**
 - **Core Functionality:** Generate in-depth reports on public GitHub repositories.
-- **Credit System:**
-    - 3 free credits on signup.
-    - 2 credits to generate a report.
-    - 1 credit to edit and republish.
-    - Reading reports is free.
-- **Monetization:** Stripe integration to buy credits ( for 5,  for 15, 0 for 35).
-- **Report Quality:** The output must be high-quality, including a directory tree map, Mermaid diagrams for service communication, and ER diagrams for database migrations. The output should be rich HTML/React, not plain Markdown.
-- **User Management:** Firebase for authentication and user management.
-- **Payment History:** Users should be able to view their transaction history.
-- **Technical Constraints:**
-    - Deduplicate report generation for the same repository.
-    - Cache GitHub API data.
-    - Handle large files gracefully.
-    - Stream LLM responses to the frontend using Server-Sent Events (SSE).
-    - Ensure credit transactions are atomic and refund credits on generation failure.
-    - Implement a fallback model for the LLM.
+- **Credit System:** Free credits on signup, credits consumed for generating/editing reports.
+- **Monetization:** Stripe integration to buy credits.
+- **Phase 1: Community Reports & Collaborative Maintenance:** Instead of multiple reports for the same repository, a single canonical report exists. Any logged-in user can spend credits to upgrade an outdated report (older than 30 days with new commits), becoming the new owner.
+- **Phase 2: Gitopedia Enterprise:** A premium feature where users can connect their GitHub organization via OAuth. The system analyzes all organization repositories as a long-running background job and generates a private, shareable wiki. This is a paid, one-time purchase per organization.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The project is a functional full-stack application using React, FastAPI, and MongoDB. Key features are in place:
-- **Authentication:** User registration and login via Firebase.
-- **Core Loop:** Users can submit a GitHub URL, and the backend generates a report using the Claude LLM, streaming the output to the frontend via SSE.
-- **Monetization:** Stripe integration is complete, allowing users to purchase credits. A transaction history is visible on the user dashboard.
-- **Integrations:** The backend is integrated with Firebase Admin, Stripe, and Claude (supporting both a direct Anthropic API key and the Emergent LLM Key as a fallback).
-- **Report Enhancements:** The LLM prompt has been improved for deeper analysis, and the frontend can render Mermaid diagrams within the generated reports.
-- **Robustness:** Key bugs have been fixed, including a race condition in user creation (now uses ), a double-crediting issue in the Stripe flow, and a guaranteed credit-refund mechanism using a  block for generation failures.
+The application is a full-stack monolith (React/FastAPI/MongoDB) with Firebase authentication and Stripe for payments.
+- **Phase 1 (Community Reports)** is fully implemented, both backend and frontend. The database schema supports report versioning and ownership, and the UI allows users to see who owns a report and upgrade it if it's outdated.
+- **Phase 2 (Enterprise)** is partially implemented. The backend has been set up with Redis and Celery for background jobs. The GitHub OAuth flow, database models (, ), and API endpoints for managing organizations are in place. The frontend has been scaffolded with pages for the entire Enterprise user journey, including a landing page, organization list, and placeholders for the organization detail/progress view and the final wiki viewer.
 
 **Last working item**:
-- **Last item agent was working:** The agent was diagnosing why report generation for large repositories (e.g., ) was failing. It correctly identified that the issue was not the Anthropic SDK timeout (which was already increased) but a **60-second Kubernetes ingress idle timeout**. The proxy connection is dropped during the long wait for the Claude API response because no data is transmitted over the SSE connection.
+- **Last item agent was working:** Debugging a critical failure in the GitHub OAuth flow. After a user authorizes the GitHub app, the callback to the backend fails silently. The server appears to restart (due to hot-reloading on an unhandled exception), and the user is left on a non-functional page. The user correctly suggested the cause might be the system not handling cases where a user has no GitHub organizations.
 - **Status:** IN PROGRESS
 - **Agent Testing Done:** N
-- **Which testing method agent to use?** backend testing agent
-- **User Testing Done:** N
+- **Which testing method agent to use?** Backend testing agent to test the callback endpoint logic with mock GitHub API responses (including an empty list of organizations). Manual testing for the end-to-end user flow.
+- **User Testing Done:** N (User is actively reporting the bug).
 
 **All Pending/In progress Issue list**:
-- **Issue 1 (P0):** Report generation fails for large repos due to ingress idle timeout.
-- **Issue 2 (P1):** Context sent to the LLM is not optimized, leading to long generation times and higher costs.
-- **Issue 3 (P1):** A proper fallback model is not yet implemented.
-- **Issue 4 (P2):** The frontend does not clearly communicate generation failures (like timeouts) to the user.
-- **Issue 5 (P2):** ER diagrams for database migrations are not yet implemented.
+- **Issue 1 (P0):** GitHub OAuth callback fails silently, blocking the entire Enterprise feature.
+- **Issue 2 (P1):** Real-time progress updates for wiki generation are not implemented.
+- **Issue 3 (P1):** The payment flow for purchasing the Enterprise plan is not implemented.
+- **Issue 4 (P2):** The final wiki viewer page is a placeholder and does not display content.
+- **Issue 5 (P2):** The original issue of report generation timing out for very large repos still exists as an underlying platform limitation, though it's mitigated by using a faster LLM.
 
 **Issues Detail:**
-- **Issue 1: Report generation fails due to ingress idle timeout.**
-    - **Attempted fixes:** The agent increased the Anthropic SDK timeout to 300s, but this did not work because the timeout occurs at the ingress/proxy level.
+- **Issue 1: GitHub OAuth callback fails silently.**
+    - **Attempted fixes:** The agent has already fixed preliminary OAuth issues like incorrect  and unregistered API routes. The current problem lies within the application logic of the callback handler.
     - **Next debug checklist:**
-        1.  Modify the SSE stream generator in  ( function).
-        2.  While awaiting the LLM response, send periodic keepalive ping events over the SSE stream (e.g., every 20 seconds) to prevent the ingress from closing the idle connection.
-        3.  Wrap the generation logic in a  block to catch the specific disconnection error and log it properly.
-    - **Why fix this issue and what will be achieved with the fix?** This is a critical bug that breaks the application's core functionality for any non-trivial repository. Fixing it will make the generation feature reliable.
+        1.  Locate the  endpoint in .
+        2.  Wrap the entire function body in a robust  block to catch and log any unexpected errors.
+        3.  Explicitly check if the list of organizations returned from the GitHub API is empty.
+        4.  If it is empty, redirect the user to the frontend organizations page with a specific error message in the query string (e.g., ).
+        5.  Update the  component to detect this query parameter and display a user-friendly alert.
+    - **Why fix this issue and what will be achieved with the fix?** This is a hard blocker for the entire Gitopedia Enterprise feature. Fixing it will unblock the user onboarding flow.
     - **Status:** IN PROGRESS
     - **Is recurring issue?** Y
-    - **Should Test frontend/backend/both after fix?** Backend
-
-- **Issue 2: Context sent to LLM is not optimized.**
-    - **Next debug checklist:**
-        1.  In , review the  function.
-        2.  Implement logic to exclude irrelevant directories (, , build artifacts) and binary files.
-        3.  For very large code files, consider sending truncated content or summaries instead of the full file.
-    - **Why fix this issue and what will be achieved with the fix?** This will reduce LLM token costs, decrease API response times, and further mitigate the risk of timeouts.
-    - **Status:** NOT STARTED
-    - **Is recurring issue?** N
-    - **Should Test frontend/backend/both after fix?** Backend
-
-- **Issue 3: No proper fallback model.**
-    - **Next debug checklist:**
-        1.  In  within the  function, add a  block around the primary model call ().
-        2.  In the  block, attempt the generation again using a faster, cheaper model like .
-    - **Why fix this issue and what will be achieved with the fix?** This will improve the reliability and availability of the report generation service if the primary model is slow or unavailable.
-    - **Status:** NOT STARTED
-    - **Is recurring issue?** N
-    - **Should Test frontend/backend/both after fix?** Backend
-
-- **Issue 4: Frontend does not communicate generation failures.**
-    - **Next debug checklist:**
-        1.  In , when a critical error is caught,  a specific error event to the SSE stream (e.g., ).
-        2.  In , update the  listener to handle this error event type.
-        3.  On error, display a toast notification to the user and reset the UI state.
-    - **Why fix this issue and what will be achieved with the fix?** Provides a better user experience by giving clear feedback when a request fails instead of silently failing.
-    - **Status:** NOT STARTED
-    - **Is recurring issue?** N
     - **Should Test frontend/backend/both after fix?** Both
-
-- **Issue 5: ER diagrams for migrations not implemented.**
-    - **Next debug checklist:**
-        1.  Update the system prompt in .
-        2.  Instruct the LLM to specifically look for database migration files (e.g., in folders named , ) and, if found, generate a Mermaid .
-    - **Why fix this issue and what will be achieved with the fix?** Fulfills a specific user feature request for more detailed and visual reports.
-    - **Status:** NOT STARTED
-    - **Is recurring issue?** N
-    - **Should Test frontend/backend/both after fix?** Backend
 
 **In progress Task List**:
 - None.
 
 **Upcoming and Future Tasks**
 **Upcoming Tasks:**
-- **(P0) Implement SSE Keepalive:** Add keepalive pings in  to prevent ingress timeouts.
-- **(P1) Optimize LLM Context:** Add logic to filter and truncate repository content before sending it to the LLM.
-- **(P1) Implement Fallback Model:** Add a secondary, faster LLM to use if the primary model fails.
-- **(P2) Enhance Frontend Error Handling:** Implement SSE error events for better user feedback on failures.
-- **(P2) Add ER Diagram Generation:** Update the prompt to generate Mermaid ER diagrams from migration files.
+- **(P0) Implement Enterprise Payment Flow:** Create backend endpoints and frontend UI to allow users to pay for the Enterprise plan via Stripe. This involves creating new Price IDs in Stripe and a new checkout session flow. (Files: , ).
+- **(P1) Implement Real-Time Progress Updates:** Use WebSockets or SSE to stream the status of the Celery background job (wiki generation) to the frontend, providing the user with real-time feedback. (Files: , , ).
+- **(P2) Implement Wiki Viewer:** Develop the functionality to fetch and render the generated wiki content for an organization, protected by the wiki access token. (Files: , ).
+
+**Future Tasks:**
+- Refactor the monolithic  file into multiple smaller  modules for better organization and maintainability.
+- Implement a more robust fix for the 60-second ingress timeout, likely by streaming the LLM response chunk-by-chunk instead of relying on keepalive pings.
 
 **Completed work in this session**
-- **Full-stack Application:** Built from scratch with React and FastAPI.
-- **Firebase Authentication:** Integrated for user management.
-- **Stripe Payment Integration:** Implemented a full buy credits flow.
-- **Claude LLM Integration:** Supports both direct Anthropic key and Emergent LLM key.
-- **SSE Streaming:** Implemented for real-time report generation.
-- **Report Quality Enhancement:** Improved the generation prompt and added support for rendering Mermaid diagrams.
-- **Transaction History:** Added a backend endpoint and frontend UI for users to view their past purchases.
-- **Critical Bug Fixes:**
-  - Resolved an auth race condition causing duplicate users by using .
-  - Fixed a Stripe double-crediting bug with idempotent server-side checks.
-  - Guaranteed credit refunds on generation failure using a  block.
+- **Phase 1: Community Reports & Upgrading (Full Stack):** Implemented the entire feature, including backend schema/logic for report versioning/ownership and frontend components to display this information and handle upgrades.
+- **Phase 2: Enterprise Scaffolding (Full Stack):**
+    - Set up the backend infrastructure with **Redis** and **Celery** for background jobs.
+    - Implemented the full **GitHub OAuth** flow and API endpoints for managing organizations.
+    - Created all required frontend pages and routing for the Enterprise feature.
+    - Added a prominent CTA on the homepage and links in the navigation to drive users to the new feature.
+- **Critical Bug Fixes & Optimizations:**
+    - Diagnosed and implemented a keepalive-ping workaround for a 60-second ingress timeout that was breaking report generation.
+    - Optimized LLM generation speed by switching the default model to the faster .
+    - Fixed multiple critical bugs in the Enterprise implementation, including unregistered API routes and an incorrect OAuth .
+    - Added extensive logging with timing metrics to the report generation process.
 
 **Earlier issues found/mentioned but not fixed**
-All known issues are captured in the All Pending/In progress Issue list.
+- All known issues are captured in the All Pending/In progress Issue list.
 
 **Known issue recurrence from previous fork**
-- N/A
+- **Report Generation Timeout:** The core issue of a 60-second ingress timeout on the platform remains. The current fix (using a faster LLM) is a mitigation, not a complete solution. Large, complex repositories may still fail.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Frontend:** React, React Router, Tailwind CSS, Shadcn UI, Firebase SDK, .
-- **Backend:** FastAPI, MongoDB (), Server-Sent Events (SSE), Firebase Admin SDK, Stripe API, Anthropic SDK.
-- **Architecture:** Monolithic repository with a React Single-Page Application (SPA) communicating with a FastAPI backend via REST and SSE.
+- **Frontend:** React, React Router, Tailwind CSS, Shadcn UI
+- **Backend:** FastAPI, MongoDB, Server-Sent Events (SSE), **Celery, Redis**
+- **Integrations:** Firebase Auth, Stripe, Anthropic (Claude), **GitHub OAuth**
+- **Architecture:** Monorepo with a React SPA, FastAPI backend, and a Celery worker for asynchronous, long-running tasks.
 
 **key DB schema**
 - **users**: 
 - **reports**: 
-- **transactions**: 
+- **organizations** (new): 
+- **wikis** (new): 
 
 **changes in tech stack**
--  library was added to the frontend for diagram rendering.
--  library was added to the backend for direct SDK access.
+- **Redis & Celery:** Added to support long-running background jobs for the Enterprise feature.
 
 **All files of reference**
-- : The application's core. Contains all API endpoints, SSE logic, and third-party integrations. This is the main file to modify for the current timeout issue and upcoming tasks.
-- : Contains the frontend logic for handling the SSE connection and report rendering.
-- : Displays user reports and the transaction history.
-- : Custom component responsible for rendering Markdown and initializing Mermaid diagrams.
+- : The core application logic. The current bug is in the  endpoint.
+- : Defines the Celery task for wiki generation.
+- : The frontend page that receives the user after the OAuth redirect.
+- : The page where the user should be redirected after a successful (or failed) OAuth callback.
 
 **Areas that need refactoring**:
--  has grown very large. It should be broken down into smaller, more manageable modules (e.g., using FastAPI's  for reports, auth, and billing).
+-  is now over 1300 lines and critically needs to be broken down into smaller modules using FastAPI's  for separation of concerns (e.g., reports, enterprise, payments).
 
 **key api endpoints**
-- : The core SSE endpoint for report generation. **This is currently failing for large repos.**
-- : Verifies Firebase ID token and creates/updates the user in the database.
-- : Creates a Stripe payment session.
-- : Verifies payment and updates user credits.
-- : Fetches the user's payment history.
+- ****: Initiates the GitHub OAuth flow.
+- ****: Handles the callback from GitHub. **THIS ENDPOINT IS CURRENTLY BROKEN.**
+- ****: Triggers the background job to generate a wiki.
 
 **Critical Info for New Agent**
-- The HIGHEST PRIORITY task is to fix the **60-second ingress idle timeout** that is breaking the report generation feature for large repos.
-- The fix is **NOT** to increase the SDK timeout (this has been tried). The fix is to send **keepalive pings** from the backend over the SSE connection while waiting for the LLM API call to complete.
-- The credit refund mechanism () is confirmed to be working correctly, so you can focus on the timeout without worrying about users losing credits.
-- The application prioritizes a direct  from the  file and uses the  as a fallback.
+- Your immediate and highest priority is to fix the **GitHub OAuth callback failure**. The entire Enterprise feature is blocked until this is resolved. Focus your investigation on the  endpoint in  and ensure it gracefully handles all scenarios, especially when a user has no organizations linked to their GitHub account.
+- The user has provided their GitHub OAuth credentials, which are stored in .
+- After fixing the callback, the next logical steps are to implement the payment flow and the real-time progress updates for wiki generation, as outlined in the upcoming tasks.
 
 **documents and test reports created in this job**
 - 
+- 
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** 
-    - **Status:** **Partially Completed.** Agent improved output quality (Mermaid), fixed credit flow, and added transaction history. Deeper report enhancements are pending.
-2.  **User:** 
-    - **Status:** **Addressed.** Agent investigated and identified an SDK timeout as the initial (incorrect) cause.
-3.  **User:** 
-    - **Status:** **IN PROGRESS.** This is the current active request. The agent correctly diagnosed the true root cause (ingress timeout) and has a plan to fix it, as well as address the other requests (context optimization, fallback model).
+1.  **User:**  - **Status:** Completed.
+2.  **User:**  - **Status:** In Progress.
+3.  **User:**  - **Status:** Completed.
+4.  **User:**  - **Status:** Completed.
+5.  **User:**  (approving plan) - **Status:** Acknowledged.
+6.  **User:**  - **Status:** In Progress.
+7.  **User:**  - **Status:** Completed.
+8.  **User:**  - **Status:** In Progress.
+9.  **User:**  - **Status:** Resolved.
+10. **User (Pending):**  - **Status:** **This is the active, highest-priority issue.**
 
 **Project Health Check:**
-- **Broken:** The core report generation feature is unreliable for large repositories due to a network-level idle timeout. This makes a key part of the application unusable for its intended purpose.
-- **Mocked:** N/A.
+- **Broken:** The primary new feature, Gitopedia Enterprise, is non-functional due to a critical bug in the GitHub OAuth callback, which prevents users from connecting their accounts.
+- **Mocked:** Key frontend components of the Enterprise feature, such as the real-time progress view and the final wiki display, are currently placeholders without backend integration.
 
 **3rd Party Integrations**
-- **Claude (claude-sonnet-4.6)** via  SDK — requires User API Key.
-- **Claude (claude-sonnet-4.6)** via  — uses Emergent LLM Key (as a fallback).
+- **Claude (claude-3-haiku-20240307)** via  SDK — requires User API Key.
 - **Firebase Auth** — requires User-provided service account and web API key.
 - **Stripe** — requires User API Key.
+- **GitHub OAuth** — requires User-provided Client ID & Secret.
+- **Redis / Celery** — for background jobs.
 
 **Testing status**
-- **Testing agent used after significant changes:** YES. It was used after the last major feature push.
-- **Troubleshoot agent used after agent stuck in loop:** NO.
-- **Test files created:** None.
-- **Known regressions:** None.
+- **Testing agent used after significant changes:** YES
+- **Troubleshoot agent used after agent stuck in loop:** NO
+- **Test files created:** None
+- **Known regressions:** None
 
 **Credentials to test flow:**
-- All necessary credentials for Firebase, Stripe, and Anthropic must be present in  and .
+- All necessary credentials for Firebase, Stripe, Anthropic, and GitHub OAuth must be present in  and .
 
 **What agent forgot to execute**
-- The agent correctly planned to implement SSE keepalive pings to solve the ingress timeout but was interrupted before executing the code changes.
-- The user's requests for context optimization, a fallback model, and ER diagrams for migrations have been acknowledged in the plan but not yet implemented.</analysis>
+- The agent failed to implement sufficient error handling and edge-case management (e.g., user with no organizations) in the GitHub OAuth callback endpoint, leading to the current critical bug.</analysis>

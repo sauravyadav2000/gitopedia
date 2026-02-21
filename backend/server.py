@@ -1078,6 +1078,43 @@ async def get_report(report_id: str):
     return report
 
 
+@api_router.get("/reports/{report_id}/history")
+async def get_report_history(report_id: str):
+    """Get version history for a report"""
+    report = await db.reports.find_one({"id": report_id}, {"_id": 0})
+    if not report:
+        raise HTTPException(404, "Report not found")
+    
+    history = []
+    
+    # Add previous owners
+    for prev_owner in report.get("previous_owners", []):
+        history.append({
+            "version": prev_owner.get("version", 0),
+            "owner_name": prev_owner.get("user_name", "Unknown"),
+            "owner_id": prev_owner.get("user_id"),
+            "generated_at": prev_owner.get("generated_at"),
+            "commit_sha": prev_owner.get("commit_sha", "")[:7]
+        })
+    
+    # Add current owner
+    history.append({
+        "version": report.get("version", 1),
+        "owner_name": report.get("current_owner_name", "Unknown"),
+        "owner_id": report.get("current_owner_id"),
+        "generated_at": report.get("generated_at"),
+        "commit_sha": report.get("repo_last_commit_sha", "")[:7],
+        "is_current": True
+    })
+    
+    return {
+        "report_id": report_id,
+        "repo_name": report.get("repo_full_name"),
+        "current_version": report.get("version", 1),
+        "history": sorted(history, key=lambda x: x["version"])
+    }
+
+
 @api_router.put("/reports/{report_id}")
 async def edit_report(report_id: str, req: EditRequest, user=Depends(get_current_user)):
     existing = await db.reports.find_one({"id": report_id}, {"_id": 0})

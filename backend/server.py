@@ -1312,15 +1312,28 @@ async def shutdown_db_client():
 
 
 # ===== Enterprise / Organization Routes =====
+
+# GitHub OAuth configuration
 GITHUB_CLIENT_ID = os.environ.get('GITHUB_CLIENT_ID')
 GITHUB_CLIENT_SECRET = os.environ.get('GITHUB_CLIENT_SECRET')
 GITHUB_OAUTH_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
-FRONTEND_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:3000').replace('/api', '')
+
+# Calculate frontend URL from backend URL
+BACKEND_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')
+if '/api' in BACKEND_URL:
+    FRONTEND_URL = BACKEND_URL.replace('/api', '')
+else:
+    FRONTEND_URL = BACKEND_URL.replace(':8001', ':3000')
+
+logger.info(f"[OAUTH] Frontend URL: {FRONTEND_URL}")
+logger.info(f"[OAUTH] GitHub callback: {FRONTEND_URL}/enterprise/callback")
 
 
 @api_router.get("/enterprise/github/authorize")
-async def github_authorize(redirect_uri: str = f"{FRONTEND_URL}/enterprise/callback"):
+async def github_authorize():
+    """Redirect to GitHub OAuth for organization access"""
+    redirect_uri = f"{FRONTEND_URL}/enterprise/callback"
     params = {
         "client_id": GITHUB_CLIENT_ID,
         "redirect_uri": redirect_uri,

@@ -161,6 +161,71 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Enterprise CTA */}
+      <section className="py-20 px-6 bg-gradient-to-br from-primary/10 via-primary/5 to-background">
+        <div className="max-w-6xl mx-auto">
+          <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-card/50 backdrop-blur-sm">
+            <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(white,transparent_85%)]" />
+            <div className="relative p-8 md:p-12">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="flex-1 text-center md:text-left">
+                  <Badge variant="secondary" className="mb-4 inline-flex">
+                    <Building2 className="w-3 h-3 mr-1" />
+                    For Organizations
+                  </Badge>
+                  <h2 className="text-3xl md:text-4xl font-heading font-bold tracking-tight mb-4">
+                    Analyze Your Entire Organization
+                  </h2>
+                  <p className="text-lg text-muted-foreground mb-6 max-w-2xl">
+                    Connect your GitHub organization and generate comprehensive wikis for all your repositories. 
+                    Perfect for teams that need complete codebase documentation.
+                  </p>
+                  <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="w-4 h-4 text-primary" />
+                      <span>Bulk analysis</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="w-4 h-4 text-primary" />
+                      <span>Background processing</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="w-4 h-4 text-primary" />
+                      <span>Shareable wikis</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-4 items-center md:items-start">
+                  <div className="text-center md:text-left">
+                    <p className="text-sm text-muted-foreground mb-1">Starting at</p>
+                    <p className="text-4xl font-bold">$50</p>
+                    <p className="text-sm text-muted-foreground">one-time payment</p>
+                  </div>
+                  <Button 
+                    size="lg" 
+                    onClick={() => navigate('/enterprise')}
+                    className="gap-2 shadow-lg shadow-primary/20"
+                  >
+                    Explore Enterprise
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                  {user && (
+                    <Button 
+                      variant="outline" 
+                      onClick={() => navigate('/enterprise/organizations')}
+                      className="w-full"
+                    >
+                      My Organizations
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Recent Reports */}
       {recentReports.length > 0 && (
         <section className="py-16 px-6">

@@ -107,7 +107,8 @@ def parse_repo_url(url: str):
     raise ValueError("Invalid GitHub repository URL")
 
 
-async def fetch_github_data(owner: str, repo: str) -> dict:
+async def fetch_github_data(owner: str, repo: str, fast_mode: bool = True) -> dict:
+    """Fetch GitHub data with optional fast mode for quicker LLM generation."""
     cache_key = f"{owner}/{repo}"
     cached = await db.github_cache.find_one({"repo_full_name": cache_key}, {"_id": 0})
     if cached:
@@ -167,17 +168,21 @@ async def fetch_github_data(owner: str, repo: str) -> dict:
                 '.next/', '.nuxt/', 'out/', 'coverage/', '.cache/', '__pycache__/',
                 'venv/', 'env/', '.venv/', 'site-packages/', 'pkg/', 'bin/',
                 '.DS_Store', 'thumbs.db', '.idea/', '.vscode/', '.terraform/',
-                'bower_components/', 'jspm_packages/', '.gradle/', '.mvn/'
+                'bower_components/', 'jspm_packages/', '.gradle/', '.mvn/', 'test/',
+                'tests/', 'spec/', '__tests__/', '.pytest_cache/', 'public/static/'
             ]
             # Binary file extensions to exclude
             binary_extensions = [
                 '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.svg', '.webp',
                 '.mp4', '.avi', '.mov', '.wmv', '.flv', '.pdf', '.zip', '.tar',
                 '.gz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.jar',
-                '.war', '.ear', '.woff', '.woff2', '.ttf', '.eot', '.otf'
+                '.war', '.ear', '.woff', '.woff2', '.ttf', '.eot', '.otf', '.map'
             ]
             
-            for item in (tree_data.get("tree") or [])[:1000]:  # Increased from 500 to 1000
+            # Limit file tree size based on mode
+            max_files = 300 if fast_mode else 1000
+            
+            for item in (tree_data.get("tree") or [])[:max_files]:
                 path = item.get("path", "")
                 
                 # Skip if matches exclude patterns
@@ -189,7 +194,7 @@ async def fetch_github_data(owner: str, repo: str) -> dict:
                     continue
                 
                 if item.get("size", 0) > 1048576:
-                    file_tree.append(f"{path} (file too large to analyze)")
+                    file_tree.append(f"{path} (large file)")
                 else:
                     file_tree.append(path)
 

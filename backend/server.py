@@ -153,11 +153,37 @@ async def fetch_github_data(owner: str, repo: str) -> dict:
         file_tree = []
         if not isinstance(tree_resp, Exception) and tree_resp.status_code == 200:
             tree_data = tree_resp.json()
-            for item in (tree_data.get("tree") or [])[:500]:
+            # Directories and patterns to exclude for optimization
+            exclude_patterns = [
+                'node_modules/', '.git/', 'dist/', 'build/', 'target/', 'vendor/',
+                '.next/', '.nuxt/', 'out/', 'coverage/', '.cache/', '__pycache__/',
+                'venv/', 'env/', '.venv/', 'site-packages/', 'pkg/', 'bin/',
+                '.DS_Store', 'thumbs.db', '.idea/', '.vscode/', '.terraform/',
+                'bower_components/', 'jspm_packages/', '.gradle/', '.mvn/'
+            ]
+            # Binary file extensions to exclude
+            binary_extensions = [
+                '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.svg', '.webp',
+                '.mp4', '.avi', '.mov', '.wmv', '.flv', '.pdf', '.zip', '.tar',
+                '.gz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.jar',
+                '.war', '.ear', '.woff', '.woff2', '.ttf', '.eot', '.otf'
+            ]
+            
+            for item in (tree_data.get("tree") or [])[:1000]:  # Increased from 500 to 1000
+                path = item.get("path", "")
+                
+                # Skip if matches exclude patterns
+                if any(pattern in path for pattern in exclude_patterns):
+                    continue
+                
+                # Skip binary files
+                if any(path.lower().endswith(ext) for ext in binary_extensions):
+                    continue
+                
                 if item.get("size", 0) > 1048576:
-                    file_tree.append(f"{item['path']} (file too large to analyze)")
+                    file_tree.append(f"{path} (file too large to analyze)")
                 else:
-                    file_tree.append(item["path"])
+                    file_tree.append(path)
 
         languages = {}
         if not isinstance(langs_resp, Exception) and langs_resp.status_code == 200:

@@ -895,6 +895,21 @@ async def get_stats():
     return {"total_reports": total_reports, "total_users": total_users}
 
 
+@api_router.get("/user/transactions")
+async def get_user_transactions(user=Depends(get_current_user)):
+    """Get payment and credit transaction history for the user"""
+    payments = await db.payment_transactions.find(
+        {"user_id": user["uid"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+
+    credits = await db.credit_transactions.find(
+        {"user_id": user["uid"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+
+    return {"payments": payments, "credits": credits}
+
+
+
 # Include router and middleware
 app.include_router(api_router)
 

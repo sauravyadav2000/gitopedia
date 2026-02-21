@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import StreamingMarkdown from '@/components/StreamingMarkdown';
+import OwnershipBanner from '@/components/OwnershipBanner';
+import UpgradeAlert from '@/components/UpgradeAlert';
+import VersionHistory from '@/components/VersionHistory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -18,6 +21,8 @@ export default function ReportView() {
   const navigate = useNavigate();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeInfo, setUpgradeInfo] = useState(null);
   const [regenerating, setRegenerating] = useState(false);
   const [regenContent, setRegenContent] = useState('');
   const [toc, setToc] = useState([]);

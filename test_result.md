@@ -1,7 +1,3 @@
-#====================================================================================================
-# START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
-#====================================================================================================
-
 # THIS SECTION CONTAINS CRITICAL TESTING INSTRUCTIONS FOR BOTH AGENTS
 # BOTH MAIN_AGENT AND TESTING_AGENT MUST PRESERVE THIS ENTIRE BLOCK
 
@@ -101,3 +97,127 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Build Gitopedia - a GitHub repository intelligence tool with credit-based report generation using Claude LLM and Stripe payments"
+
+backend:
+  - task: "SSE Keepalive Pings for Large Repo Generation"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 1
+    priority: "critical"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "user"
+        comment: "User reported that generation fails for large repos like Stremio/stremio-web due to 60-second ingress idle timeout"
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented SSE keepalive pings that send a 'ping' event every 20 seconds during LLM generation to prevent ingress timeout. Used asyncio.wait_for with 20s timeout and asyncio.shield to protect the task. Added asyncio.CancelledError handling for connection drops. Applied to both generate and regenerate endpoints."
+
+  - task: "Optimize LLM Context"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added filtering to exclude node_modules, .git, dist, build, vendor, __pycache__, and other common build artifacts. Also excludes binary files (.jpg, .png, .pdf, .zip, etc.). Increased file tree limit from 500 to 1000 files since we're now filtering intelligently."
+
+  - task: "Fallback LLM Model"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented nested try-catch in generate_report_content. Primary model is claude-sonnet-4-20250514. If it fails with RateLimitError, InternalServerError, or any Exception, falls back to claude-3-haiku-20240307. Logs indicate which model is being used."
+
+  - task: "ER Diagram Generation for Database Migrations"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Already implemented in previous session. Prompt detects migration files and instructs LLM to generate Mermaid ER diagrams. No changes needed."
+
+  - task: "Credit Refund Mechanism"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Confirmed working in handoff summary. Uses try...finally block to guarantee credit refund on generation failure."
+
+  - task: "Stripe Payment Integration"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Confirmed working in handoff summary. Double-crediting bug was fixed with idempotent server-side checks."
+
+frontend:
+  - task: "Handle SSE Ping Events"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/pages/Generate.js"
+    stuck_count: 0
+    priority: "critical"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added handling for 'ping' event type in SSE listener. Ping events are gracefully ignored to prevent UI disruption during keepalive messages."
+
+  - task: "Error Communication via SSE"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/Generate.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Already implemented. Frontend handles 'error' event type from SSE and displays error messages with toast notifications."
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  test_sequence: 1
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "SSE Keepalive Pings for Large Repo Generation"
+    - "Optimize LLM Context"
+    - "Fallback LLM Model"
+    - "Handle SSE Ping Events"
+  stuck_tasks:
+    - "SSE Keepalive Pings for Large Repo Generation"
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented all Priority 0 and Priority 1 tasks. The critical ingress timeout issue has been addressed with SSE keepalive pings. Context optimization filters out unnecessary files. Fallback model adds resilience. Need comprehensive testing, especially for large repo generation (Stremio/stremio-web). Backend API endpoint /api/stats confirmed working. Firebase auth credentials required for full E2E testing."

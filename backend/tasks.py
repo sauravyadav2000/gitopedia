@@ -4,10 +4,16 @@ Background tasks for organization analysis
 from celery_config import celery_app
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+from pathlib import Path
 import asyncio
 import httpx
 import os
 import logging
+
+# Load environment variables
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
 
 logger = logging.getLogger(__name__)
 

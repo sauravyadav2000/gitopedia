@@ -15,6 +15,7 @@ export default function Dashboard() {
   const { user, profile, getToken, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [reports, setReports] = useState([]);
+  const [transactions, setTransactions] = useState({ payments: [], credits: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,18 +23,22 @@ export default function Dashboard() {
       navigate('/auth?redirect=/dashboard');
       return;
     }
-    fetchReports();
+    fetchData();
   }, [user]);
 
-  const fetchReports = async () => {
+  const fetchData = async () => {
     try {
       const token = await getToken();
-      const res = await fetch(`${API}/api/user/reports`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const [reportsRes, txRes] = await Promise.all([
+        fetch(`${API}/api/user/reports`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/user/transactions`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (reportsRes.ok) {
+        const data = await reportsRes.json();
         setReports(data.reports || []);
+      }
+      if (txRes.ok) {
+        setTransactions(await txRes.json());
       }
     } catch {}
     setLoading(false);

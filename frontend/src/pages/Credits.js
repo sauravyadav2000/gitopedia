@@ -51,11 +51,13 @@ export default function Credits() {
         setPaymentSuccess(true);
         refreshProfile();
         toast.success('Credits added successfully!');
+        setSearchParams({}, { replace: true });
         return;
       }
       if (data.status === 'expired') {
         setVerifying(false);
         toast.error('Payment session expired.');
+        setSearchParams({}, { replace: true });
         return;
       }
       setTimeout(() => pollPaymentStatus(sid, attempts + 1), 2000);

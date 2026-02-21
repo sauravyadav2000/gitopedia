@@ -1334,3 +1334,421 @@ async def startup_db_indexes():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     mongo_client.close()
+
+
+# ===== Enterprise / Organization Routes =====
+
+# GitHub OAuth configuration
+GITHUB_CLIENT_ID = os.environ.get('GITHUB_CLIENT_ID')
+GITHUB_CLIENT_SECRET = os.environ.get('GITHUB_CLIENT_SECRET')
+GITHUB_OAUTH_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+FRONTEND_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:3000').replace('/api', '')
+
+
+@api_router.get("/enterprise/github/authorize")
+async def github_authorize(redirect_uri: str = f"{FRONTEND_URL}/enterprise/callback"):
+    """Redirect to GitHub OAuth for organization access"""
+    params = {
+        "client_id": GITHUB_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "scope": "read:org,repo,user:email",
+        "state": secrets.token_urlsafe(16)
+    }
+    auth_url = f"{GITHUB_OAUTH_URL}?{urlencode(params)}"
+    return {"url": auth_url}
+
+
+@api_router.post("/enterprise/github/callback")
+async def github_callback(code: str, user=Depends(get_current_user)):
+    """Exchange OAuth code for access token and fetch user's organizations"""
+    try:
+        # Exchange code for access token
+        async with httpx.AsyncClient() as client:
+            token_resp = await client.post(
+                GITHUB_TOKEN_URL,
+                data={
+                    "client_id": GITHUB_CLIENT_ID,
+                    "client_secret": GITHUB_CLIENT_SECRET,
+                    "code": code
+                },
+                headers={"Accept": "application/json"}
+            )
+            
+            if token_resp.status_code != 200:
+                raise HTTPException(400, "Failed to exchange code for token")
+            
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token")
+            
+            if not access_token:
+                raise HTTPException(400, "No access token received")
+            
+            # Fetch user's organizations
+            orgs_resp = await client.get(
+                "https://api.github.com/user/orgs",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "Gitopedia/1.0"
+                }
+            )
+            
+            if orgs_resp.status_code != 200:
+                raise HTTPException(400, "Failed to fetch organizations")
+            
+            organizations = orgs_resp.json()
+            
+            return {
+                "access_token": access_token,  # Frontend will use this temporarily
+                "organizations": [
+                    {
+                        "id": org["id"],
+                        "login": org["login"],
+                        "name": org.get("description", org["login"]),
+                        "avatar_url": org.get("avatar_url"),
+                        "url": org.get("html_url")
+                    }
+                    for org in organizations
+                ]
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GitHub callback error: {e}")
+        raise HTTPException(500, "Failed to complete GitHub authorization")
+
+
+@api_router.post("/enterprise/organizations/connect")
+async def connect_organization(
+    github_org_id: int,
+    github_org_login: str,
+    github_org_name: str,
+    github_token: str,
+    avatar_url: Optional[str] = None,
+    user=Depends(get_current_user)
+):
+    """Connect a GitHub organization for analysis"""
+    try:
+        # Check if organization already connected by this user
+        existing = await db.organizations.find_one({
+            "github_org_id": github_org_id,
+            "owner_user_id": user["uid"]
+        }, {"_id": 0})
+        
+        if existing:
+            return {"message": "Organization already connected", "organization": existing}
+        
+        # Fetch organization details from GitHub to verify access
+        async with httpx.AsyncClient() as client:
+            org_resp = await client.get(
+                f"https://api.github.com/orgs/{github_org_login}",
+                headers={
+                    "Authorization": f"Bearer {github_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "Gitopedia/1.0"
+                }
+            )
+            
+            if org_resp.status_code != 200:
+                raise HTTPException(403, "Cannot access this organization. Please check permissions.")
+            
+            org_data = org_resp.json()
+            total_repos = org_data.get("public_repos", 0)
+        
+        # Determine pricing tier
+        if total_repos <= 50:
+            pricing_tier = "small"
+            price = 50
+        elif total_repos <= 100:
+            pricing_tier = "medium"
+            price = 100
+        else:
+            pricing_tier = "large"
+            price = 200
+        
+        # Create organization record
+        org_id = str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        
+        organization = {
+            "id": org_id,
+            "github_org_id": github_org_id,
+            "github_org_login": github_org_login,
+            "github_org_name": github_org_name or github_org_login,
+            "avatar_url": avatar_url or org_data.get("avatar_url"),
+            "owner_user_id": user["uid"],
+            "access_token": github_token,  # Store encrypted in production!
+            "total_repos": total_repos,
+            "analyzed_repos": 0,
+            "last_analyzed_at": None,
+            "wiki_id": None,
+            "wiki_access_token": None,
+            "wiki_url": None,
+            "pricing_tier": pricing_tier,
+            "payment_status": "pending",
+            "stripe_session_id": None,
+            "paid_amount": price,
+            "created_at": now,
+            "updated_at": now
+        }
+        
+        await db.organizations.insert_one(organization)
+        organization.pop("_id", None)
+        
+        return {
+            "message": "Organization connected successfully",
+            "organization": organization,
+            "pricing": {
+                "tier": pricing_tier,
+                "amount": price,
+                "total_repos": total_repos
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Connect organization error: {e}")
+        raise HTTPException(500, "Failed to connect organization")
+
+
+@api_router.get("/enterprise/organizations")
+async def list_organizations(user=Depends(get_current_user)):
+    """List all organizations connected by the user"""
+    orgs = await db.organizations.find(
+        {"owner_user_id": user["uid"]},
+        {"_id": 0, "access_token": 0}  # Don't send access token to frontend
+    ).to_list(100)
+    
+    return {"organizations": orgs}
+
+
+@api_router.get("/enterprise/organizations/{org_id}")
+async def get_organization(org_id: str, user=Depends(get_current_user)):
+    """Get organization details"""
+    org = await db.organizations.find_one(
+        {"id": org_id, "owner_user_id": user["uid"]},
+        {"_id": 0, "access_token": 0}
+    )
+    
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    
+    # Get active job if any
+    active_job = await db.analysis_jobs.find_one(
+        {"organization_id": org_id, "status": {"$in": ["queued", "processing"]}},
+        {"_id": 0}
+    )
+    
+    return {
+        "organization": org,
+        "active_job": active_job
+    }
+
+
+@api_router.post("/enterprise/organizations/{org_id}/analyze")
+async def start_organization_analysis(org_id: str, user=Depends(get_current_user)):
+    """Start background analysis of organization repositories"""
+    try:
+        # Get organization
+        org = await db.organizations.find_one(
+            {"id": org_id, "owner_user_id": user["uid"]},
+            {"_id": 0}
+        )
+        
+        if not org:
+            raise HTTPException(404, "Organization not found")
+        
+        # Check payment status
+        if org.get("payment_status") != "paid":
+            # Create Stripe checkout session
+            import stripe
+            stripe.api_key = os.environ.get('STRIPE_API_KEY')
+            
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[{
+                    'price_data': {
+                        'currency': 'usd',
+                        'product_data': {
+                            'name': f'Organization Analysis - {org["github_org_name"]}',
+                            'description': f'{org["total_repos"]} repositories ({org["pricing_tier"]} tier)',
+                        },
+                        'unit_amount': org["paid_amount"] * 100,
+                    },
+                    'quantity': 1,
+                }],
+                mode='payment',
+                success_url=f"{FRONTEND_URL}/enterprise/organizations/{org_id}?payment=success",
+                cancel_url=f"{FRONTEND_URL}/enterprise/organizations/{org_id}?payment=cancelled",
+                metadata={
+                    'organization_id': org_id,
+                    'user_id': user["uid"],
+                    'type': 'organization_analysis'
+                }
+            )
+            
+            # Update organization with session ID
+            await db.organizations.update_one(
+                {"id": org_id},
+                {"$set": {"stripe_session_id": session.id}}
+            )
+            
+            return {
+                "requires_payment": True,
+                "checkout_url": session.url,
+                "session_id": session.id,
+                "amount": org["paid_amount"]
+            }
+        
+        # Payment already completed, start analysis
+        # Check if there's already an active job
+        active_job = await db.analysis_jobs.find_one(
+            {"organization_id": org_id, "status": {"$in": ["queued", "processing"]}},
+            {"_id": 0}
+        )
+        
+        if active_job:
+            return {
+                "message": "Analysis already in progress",
+                "job": active_job
+            }
+        
+        # Create analysis job
+        job_id = str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        
+        job = {
+            "id": job_id,
+            "organization_id": org_id,
+            "user_id": user["uid"],
+            "job_type": "full_analysis",
+            "status": "queued",
+            "total_repos": 0,
+            "processed_repos": 0,
+            "failed_repos": 0,
+            "progress_percentage": 0,
+            "started_at": None,
+            "completed_at": None,
+            "estimated_completion": None,
+            "generated_reports": [],
+            "failed_repo_names": [],
+            "wiki_id": None,
+            "error_message": None,
+            "retry_count": 0,
+            "created_at": now,
+            "updated_at": now
+        }
+        
+        await db.analysis_jobs.insert_one(job)
+        
+        # Queue Celery task
+        from tasks import analyze_organization
+        task = analyze_organization.delay(job_id, org_id, org["access_token"])
+        
+        logger.info(f"[ENTERPRISE] Started analysis job {job_id} for org {org_id}, Celery task: {task.id}")
+        
+        return {
+            "message": "Analysis started",
+            "job_id": job_id,
+            "celery_task_id": task.id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Start analysis error: {e}")
+        raise HTTPException(500, f"Failed to start analysis: {str(e)}")
+
+
+@api_router.get("/enterprise/jobs/{job_id}")
+async def get_job_status(job_id: str, user=Depends(get_current_user)):
+    """Get job status and progress"""
+    job = await db.analysis_jobs.find_one(
+        {"id": job_id, "user_id": user["uid"]},
+        {"_id": 0}
+    )
+    
+    if not job:
+        raise HTTPException(404, "Job not found")
+    
+    return {"job": job}
+
+
+@api_router.post("/enterprise/payment/webhook")
+async def enterprise_payment_webhook(request: Request):
+    """Handle Stripe webhook for enterprise payments"""
+    import stripe
+    stripe.api_key = os.environ.get('STRIPE_API_KEY')
+    
+    payload = await request.body()
+    sig_header = request.headers.get('stripe-signature')
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, os.environ.get('STRIPE_WEBHOOK_SECRET', 'test')
+        )
+    except:
+        # For testing without webhook secret
+        event = json.loads(payload)
+    
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        metadata = session.get('metadata', {})
+        
+        if metadata.get('type') == 'organization_analysis':
+            org_id = metadata.get('organization_id')
+            
+            # Mark organization as paid
+            await db.organizations.update_one(
+                {"id": org_id},
+                {"$set": {
+                    "payment_status": "paid",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            
+            logger.info(f"[ENTERPRISE] Payment completed for organization {org_id}")
+    
+    return {"status": "success"}
+
+
+# ===== Wiki Routes =====
+
+@api_router.get("/wiki/{org_login}/{access_token}")
+async def get_wiki_public(org_login: str, access_token: str):
+    """Public wiki viewer - no authentication required, just valid token"""
+    # Find organization by login and verify token
+    org = await db.organizations.find_one(
+        {"github_org_login": org_login, "wiki_access_token": access_token},
+        {"_id": 0}
+    )
+    
+    if not org:
+        raise HTTPException(404, "Wiki not found or invalid access token")
+    
+    if not org.get("wiki_id"):
+        raise HTTPException(404, "Wiki has not been generated yet")
+    
+    # Get wiki content
+    wiki = await db.organization_wikis.find_one(
+        {"id": org["wiki_id"]},
+        {"_id": 0}
+    )
+    
+    if not wiki:
+        raise HTTPException(404, "Wiki content not found")
+    
+    return {
+        "organization": {
+            "name": org["github_org_name"],
+            "login": org["github_org_login"],
+            "avatar_url": org.get("avatar_url"),
+            "total_repos": org["total_repos"],
+            "analyzed_repos": org["analyzed_repos"]
+        },
+        "wiki": wiki
+    }
+

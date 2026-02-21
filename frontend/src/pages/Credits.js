@@ -19,7 +19,7 @@ const PACKAGES = [
 export default function Credits() {
   const { user, profile, getToken, refreshProfile } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
   const [purchasing, setPurchasing] = useState('');
   const [verifying, setVerifying] = useState(false);

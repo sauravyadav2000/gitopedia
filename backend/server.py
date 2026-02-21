@@ -74,6 +74,84 @@ class EditRequest(BaseModel):
     content: str
 
 
+# ===== Helper Functions =====
+async def check_repo_freshness(report: dict, owner: str, repo: str) -> dict:
+    """Check if report needs upgrade based on age and new commits."""
+    try:
+        # Calculate days since last update
+        report_date = datetime.fromisoformat(report["generated_at"])
+        days_old = (datetime.now(timezone.utc) - report_date).days
+        
+        # Check if report is >30 days old
+        if days_old < 30:
+            return {
+                "can_upgrade": False,
+                "reason": f"Report is still fresh (updated {days_old} days ago)",
+                "days_old": days_old
+            }
+        
+        # Fetch latest commit from GitHub
+        async with httpx.AsyncClient(timeout=10) as client:
+            headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "Gitopedia/1.0"}
+            commits_resp = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}/commits?per_page=1",
+                headers=headers
+            )
+            
+            if commits_resp.status_code != 200:
+                return {
+                    "can_upgrade": False,
+                    "reason": "Could not fetch latest commits from GitHub"
+                }
+            
+            commits = commits_resp.json()
+            if not commits:
+                return {
+                    "can_upgrade": False,
+                    "reason": "No commits found"
+                }
+            
+            latest_commit = commits[0]
+            latest_commit_sha = latest_commit["sha"]
+            latest_commit_date = latest_commit["commit"]["author"]["date"]
+            
+            # Check if there are new commits since report generation
+            report_commit_sha = report.get("repo_last_commit_sha")
+            if latest_commit_sha == report_commit_sha:
+                return {
+                    "can_upgrade": False,
+                    "reason": "No new commits since last report",
+                    "days_old": days_old
+                }
+            
+            # Count commits between report and now
+            compare_resp = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}/compare/{report_commit_sha}...{latest_commit_sha}",
+                headers=headers
+            )
+            
+            new_commits_count = 0
+            if compare_resp.status_code == 200:
+                compare_data = compare_resp.json()
+                new_commits_count = compare_data.get("total_commits", 0)
+            
+            return {
+                "can_upgrade": True,
+                "reason": f"Report is {days_old} days old with {new_commits_count} new commits",
+                "days_old": days_old,
+                "new_commits_count": new_commits_count,
+                "latest_commit_date": latest_commit_date,
+                "latest_commit_sha": latest_commit_sha
+            }
+            
+    except Exception as e:
+        logger.error(f"Error checking repo freshness: {e}")
+        return {
+            "can_upgrade": False,
+            "reason": "Error checking repository status"
+        }
+
+
 # ===== Auth Dependencies =====
 async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)):
     if not creds:

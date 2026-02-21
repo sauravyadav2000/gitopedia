@@ -1370,7 +1370,9 @@ async def github_callback(request: GithubCallbackRequest, user=Depends(get_curre
     """
     code = request.code
     user_uid = user.get("uid", "unknown")
-    logger.info(f"[GITHUB-CALLBACK] Starting for user {user_uid[:8]}...")
+    logger.info(f"[GITHUB-CALLBACK] ===== START =====")
+    logger.info(f"[GITHUB-CALLBACK] User: {user_uid[:8]}, Code length: {len(code) if code else 0}")
+    logger.debug(f"[GITHUB-CALLBACK] Request data: {request.dict()}")
     
     try:
         async with httpx.AsyncClient() as client:
@@ -1468,7 +1470,9 @@ async def connect_organization(
     Connect a GitHub organization to the user's account
     """
     user_uid = user.get("uid", "unknown")
+    logger.info(f"[ORG-CONNECT] ===== START =====")
     logger.info(f"[ORG-CONNECT] User {user_uid[:8]} connecting org: {request.github_org_login}")
+    logger.debug(f"[ORG-CONNECT] Request data: {request.dict()}")
     
     try:
         existing = await db.organizations.find_one(

@@ -24,6 +24,7 @@ export default function Credits() {
   const [purchasing, setPurchasing] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const polledRef = useRef(false);
 
   useEffect(() => {
     if (!user) {

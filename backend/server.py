@@ -1664,7 +1664,11 @@ async def start_organization_analysis(org_id: str, user=Depends(get_current_user
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Start analysis error: {e}")
+        error_type = type(e).__name__
+        if 'stripe' in error_type.lower():
+            logger.error(f"[ANALYZE] Stripe error: {error_type}: {e}", exc_info=True)
+            raise HTTPException(503, f"Payment system error: {str(e)}")
+        logger.error(f"[ANALYZE] Unexpected error: {error_type}: {e}", exc_info=True)
         raise HTTPException(500, f"Failed to start analysis: {str(e)}")
 
 

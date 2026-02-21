@@ -724,21 +724,26 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             credits_deducted = False
 
             updated_user = await db.users.find_one({"uid": uid}, {"_id": 0})
+            total_duration = time.time() - start_time
+            logger.info(f"[SUCCESS] Report generated in {total_duration:.2f}s for {repo_full_name} (user: {uid})")
             yield f"data: {json.dumps({'type': 'done', 'report_id': report_id, 'credits_remaining': updated_user.get('credits', 0)})}\n\n"
 
         except asyncio.CancelledError:
-            logger.warning(f"Report generation cancelled (connection dropped) for user {uid}")
+            duration = time.time() - start_time
+            logger.warning(f"[CANCELLED] Connection dropped after {duration:.2f}s for {repo_full_name} (user: {uid})")
             yield f"data: {json.dumps({'type': 'error', 'message': 'Connection lost. Credits have been refunded.'})}\n\n"
         except HTTPException as e:
-            logger.error(f"Report generation HTTP error: {e.detail}")
+            duration = time.time() - start_time
+            logger.error(f"[HTTP ERROR] {e.detail} after {duration:.2f}s for {repo_full_name}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e.detail)})}\n\n"
         except Exception as e:
-            logger.error(f"Report generation error: {e}")
+            duration = time.time() - start_time
+            logger.error(f"[ERROR] Generation failed after {duration:.2f}s for {repo_full_name}: {str(e)}")
             yield f"data: {json.dumps({'type': 'error', 'message': 'Report generation failed. Credits have been refunded.'})}\n\n"
         finally:
             # Guaranteed refund if credits were deducted but report wasn't saved
             if credits_deducted:
-                logger.info(f"Refunding 2 credits for user {uid} (generation failed)")
+                logger.info(f"[REFUND] Refunding 2 credits to user {uid} (generation failed)")
                 await db.users.update_one({"uid": uid}, {"$inc": {"credits": 2}})
 
     return StreamingResponse(stream_report(), media_type="text/event-stream",

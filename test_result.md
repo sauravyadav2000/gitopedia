@@ -216,14 +216,9 @@ metadata:
   test_sequence: 1
   run_ui: true
 
-test_plan:
-  current_focus:
-    - "SSE Keepalive Pings for Large Repo Generation"
-    - "Optimize LLM Context"
-    - "Fallback LLM Model"
-    - "Handle SSE Ping Events"
-  stuck_tasks:
-    - "SSE Keepalive Pings for Large Repo Generation"
+  test_plan:
+  current_focus: []
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 

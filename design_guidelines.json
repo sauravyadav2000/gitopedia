@@ -1,0 +1,157 @@
+{
+  "project_name": "Gitopedia",
+  "design_philosophy": {
+    "identity": "The Anti-AI Designer",
+    "core_principles": [
+      "Fusion over Imitation: Mix 'Hacker Aesthetics' with 'Swiss Typography'.",
+      "Emotion First: The app should feel 'Precise', 'Dangerous', and 'Intelligent'.",
+      "Content is King: The Markdown report is the hero. It must look better than a PDF.",
+      "Negative Space: Use massive padding (p-8, p-12) to let code breathe.",
+      "Contrast: High contrast text (White on Black), subtle borders."
+    ],
+    "anti_patterns": [
+      "No 'Inter' for headings.",
+      "No standard 'Bootstrap' columns.",
+      "No 'Center-Everything' layouts.",
+      "No 'Vercel-style' gradients (unless heavily textured)."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Outfit, sans-serif",
+      "body": "Manrope, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-5xl md:text-7xl font-bold tracking-tight",
+      "h2": "text-3xl md:text-5xl font-semibold tracking-tight",
+      "h3": "text-2xl md:text-3xl font-medium",
+      "body": "text-base md:text-lg leading-relaxed text-muted-foreground",
+      "caption": "text-sm text-muted-foreground tracking-widest uppercase"
+    },
+    "imports": [
+      "@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;700&family=Outfit:wght@400;700;900&display=swap');"
+    ]
+  },
+  "colors": {
+    "theme": "dark",
+    "palette": {
+      "background": "#050505",
+      "foreground": "#FAFAFA",
+      "card": "#0A0A0A",
+      "card_foreground": "#FAFAFA",
+      "popover": "#0A0A0A",
+      "popover_foreground": "#FAFAFA",
+      "primary": "#D946EF",
+      "primary_foreground": "#000000",
+      "secondary": "#27272A",
+      "secondary_foreground": "#FAFAFA",
+      "muted": "#18181B",
+      "muted_foreground": "#A1A1AA",
+      "accent": "#2DD4BF",
+      "accent_foreground": "#000000",
+      "destructive": "#EF4444",
+      "destructive_foreground": "#FAFAFA",
+      "border": "#27272A",
+      "input": "#27272A",
+      "ring": "#D946EF"
+    },
+    "gradients": {
+      "brand": "bg-gradient-to-r from-fuchsia-500 to-cyan-500",
+      "subtle": "bg-gradient-to-b from-zinc-900 to-black"
+    },
+    "usage": {
+      "primary": "Use for primary CTAs and key brand moments.",
+      "accent": "Use for 'Success' states, data visualization highlights, and active states.",
+      "muted": "Use for secondary text, borders, and inactive elements."
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid #27272A (Zinc 800)",
+    "shadows": {
+      "card": "0 0 0 1px #27272A, 0 4px 12px rgba(0,0,0,0.5)",
+      "glow": "0 0 20px rgba(217, 70, 239, 0.3)"
+    },
+    "radius": "0px (Sharp) or 4px (Minimal) - NO PILL SHAPES for cards.",
+    "textures": "Use a subtle 'noise' overlay (opacity 0.03) on the background to kill flat colors."
+  },
+  "layout_strategies": {
+    "landing_page": {
+      "type": "Asymmetric Grid",
+      "structure": "Hero on left (col-span-7), 3D/Visual on right (col-span-5). Overlapping elements encouraged.",
+      "spacing": "gap-8 md:gap-12"
+    },
+    "dashboard": {
+      "type": "Bento Grid (Mode B)",
+      "structure": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4",
+      "items": {
+        "summary": "col-span-1",
+        "chart": "col-span-2 row-span-2",
+        "feed": "col-span-1 row-span-2"
+      }
+    },
+    "report_view": {
+      "type": "Focused Reading",
+      "structure": "max-w-4xl mx-auto py-12 px-6",
+      "features": [
+        "Sticky Table of Contents (Left)",
+        "Metadata Sidebar (Right - on large screens only)",
+        "Typography: 'Prose' class with 'prose-invert' and custom overrides for code blocks."
+      ]
+    }
+  },
+  "components": {
+    "shadcn_customization": [
+      "Buttons: rounded-sm (sharp), font-bold, tracking-wide.",
+      "Cards: bg-card/50 backdrop-blur-md, border-border/50.",
+      "Inputs: bg-muted/50 border-transparent focus:border-primary h-12.",
+      "Dialogs: No rounded corners, raw borders, glassmorphism backdrop."
+    ],
+    "custom_components": [
+      "CodeBlock: Uses 'shiki' or 'prism-react-renderer' with a custom 'One Dark Pro' or 'Dracula' theme.",
+      "StreamText: A component that handles SSE streaming with a 'blinking cursor' effect.",
+      "CreditBadge: A distinct, glowing badge in the header showing user credits."
+    ],
+    "libraries": {
+      "icons": "lucide-react (Default), @radix-ui/react-icons (for specific UI needs)",
+      "charts": "recharts (via Shadcn Charts)",
+      "markdown": "react-markdown, remark-gfm, rehype-highlight",
+      "motion": "framer-motion",
+      "visuals": "@tsparticles/react, @tsparticles/slim (for 'Network/Code' background effects)"
+    }
+  },
+  "motion": {
+    "preset": "Framer Motion",
+    "transitions": {
+      "hover": "transition-all duration-300 ease-out",
+      "page_load": "opacity: 0 -> 1, y: 20 -> 0 (staggered)",
+      "stream": "Smooth character rendering for reports."
+    },
+    "reduced_motion": "Respect 'prefers-reduced-motion'."
+  },
+  "accessibility": {
+    "contrast": "Ensure 4.5:1 ratio for text. Use APCA standards.",
+    "focus_states": "Visible ring-2 ring-primary ring-offset-2 ring-offset-background.",
+    "aria": "All interactive elements must have aria-labels if no text is present."
+  },
+  "media": {
+    "image_strategy": "Minimalist. Use generated CSS patterns or SVG illustrations instead of stock photos.",
+    "placeholders": "Use 'https://placehold.co/600x400/18181b/ffffff?text=Repo+Preview' for missing repo images.",
+    "logo_handling": "Monochrome logos (white/gray) to fit the dark theme."
+  },
+  "universal_guidelines": [
+    "Do NOT use gradients for text (readability issues).",
+    "Do NOT center align the app container.",
+    "Use 'sonner' for toasts.",
+    "Add 'data-testid' to all interactive elements.",
+    "Ensure the 'Report View' is printer-friendly (media print styles)."
+  ],
+  "instructions_to_main_agent": [
+    "Install dependencies: `npm install framer-motion lucide-react clsx tailwind-merge @radix-ui/react-slot react-markdown remark-gfm rehype-highlight @tsparticles/react @tsparticles/slim`.",
+    "Configure Tailwind with the colors provided in this JSON.",
+    "Set up the font imports in `index.css`.",
+    "Implement the 'Bento Grid' layout for the Dashboard.",
+    "Create a 'StreamingMarkdown' component that accepts a stream of text and renders it incrementally.",
+    "Ensure the 'Credit Purchase' flow uses a clear, high-contrast pricing card."
+  ]
+}

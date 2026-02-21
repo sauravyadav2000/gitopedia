@@ -1597,3 +1597,8 @@ async def get_wiki_public(org_login: str, access_token: str):
         },
         "wiki": wiki
     }
+
+
+# ===== Include API Router =====
+# This MUST be at the end, after all routes are defined
+app.include_router(api_router)

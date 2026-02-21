@@ -38,15 +38,111 @@ export default function ReportView() {
     }
   }, [report?.content]);
 
+  useEffect(() => {
+    if (report && user) {
+      checkUpgradeEligibility();
+    }
+  }, [report, user]);
+
   const fetchReport = async () => {
     try {
       const res = await fetch(`${API}/api/reports/${id}`);
       if (!res.ok) throw new Error('Report not found');
-      setReport(await res.json());
+      const data = await res.json();
+      setReport(data);
     } catch {
       navigate('/browse');
     }
     setLoading(false);
+  };
+
+  const checkUpgradeEligibility = async () => {
+    if (!report || !user) return;
+    
+    try {
+      const res = await fetch(`${API}/api/reports/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_url: report.repo_url })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setUpgradeInfo(data);
+      }
+    } catch (error) {
+      console.error('Failed to check upgrade eligibility:', error);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    if (!user) {
+      navigate(`/auth?redirect=/report/${id}`);
+      return;
+    }
+
+    if (!upgradeInfo?.can_upgrade) {
+      toast.error('This report cannot be upgraded at this time');
+      return;
+    }
+
+    setUpgrading(true);
+    setRegenContent('');
+    
+    try {
+      const token = await getToken();
+      const response = await fetch(`${API}/api/reports/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ repo_url: report.repo_url })
+      });
+
+      if (response.status === 402) {
+        toast.error('Insufficient credits. You need 2 credits to upgrade this report.');
+        setUpgrading(false);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'content') {
+              setRegenContent(prev => prev + data.text);
+            } else if (data.type === 'done') {
+              toast.success('Report upgraded successfully! You are now the maintainer.');
+              await refreshProfile();
+              await fetchReport(); // Refresh to show updated ownership
+              setUpgrading(false);
+              setUpgradeInfo(null);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else if (data.type === 'error') {
+              toast.error(data.message);
+              setUpgrading(false);
+            }
+          } catch {}
+        }
+      }
+    } catch (error) {
+      console.error('Upgrade error:', error);
+      toast.error('Failed to upgrade report. Please try again.');
+      setUpgrading(false);
+    }
   };
 
   const handleRegenerate = async () => {

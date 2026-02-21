@@ -109,6 +109,9 @@ export default function Generate() {
               setError(data.message);
               setIsStreaming(false);
               setStatus('');
+            } else if (data.type === 'ping') {
+              // Keepalive ping - ignore but optionally update status
+              // This prevents ingress timeout for long-running generations
             }
           } catch {}
         }

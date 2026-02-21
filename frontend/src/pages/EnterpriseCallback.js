@@ -22,25 +22,34 @@ export default function EnterpriseCallback() {
 
   useEffect(() => {
     handleCallback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCallback = async () => {
     const code = searchParams.get('code');
     
+    console.log('[EnterpriseCallback] Starting callback handler');
+    console.log('[EnterpriseCallback] Code:', code ? `present (${code.length} chars)` : 'MISSING');
+    console.log('[EnterpriseCallback] User:', user ? user.uid.substring(0, 8) : 'NOT LOGGED IN');
+    
     if (!code) {
+      console.error('[EnterpriseCallback] No authorization code in URL');
       toast.error('No authorization code received');
       navigate('/enterprise');
       return;
     }
 
     if (!user) {
+      console.error('[EnterpriseCallback] User not logged in');
       toast.error('Please log in first');
       navigate('/auth?redirect=/enterprise');
       return;
     }
 
     try {
+      console.log('[EnterpriseCallback] Getting Firebase token...');
       const token = await getToken();
+      console.log('[EnterpriseCallback] Token received, calling backend...');
       
       // Exchange code for access token
       const res = await fetch(`${API}/api/enterprise/github/callback`, {
@@ -52,12 +61,17 @@ export default function EnterpriseCallback() {
         body: JSON.stringify({ code })
       });
 
+      console.log('[EnterpriseCallback] Backend response status:', res.status);
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
+        console.error('[EnterpriseCallback] Backend error:', errorData);
         throw new Error(errorData.detail || 'Failed to authenticate');
       }
 
       const data = await res.json();
+      console.log('[EnterpriseCallback] Success! Organizations:', data.organizations?.length || 0);
+      
       setGithubToken(data.access_token);
       setOrganizations(data.organizations || []);
       
@@ -72,7 +86,7 @@ export default function EnterpriseCallback() {
       
       setLoading(false);
     } catch (error) {
-      console.error('Callback error:', error);
+      console.error('[EnterpriseCallback] Callback error:', error);
       toast.error('Failed to connect GitHub account');
       navigate('/enterprise');
     }

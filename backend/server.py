@@ -656,7 +656,8 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing codebase with AI...'})}\n\n"
             
             # Generate content with keepalive pings to prevent ingress timeout
-            logger.info(f"Starting LLM generation for {repo_full_name} (user: {uid})")
+            llm_start = time.time()
+            logger.info(f"[LLM START] Starting generation for {repo_full_name} (user: {uid})")
             generation_task = asyncio.create_task(generate_report_content(github_data))
             ping_count = 0
             
@@ -665,13 +666,14 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
                 try:
                     # Wait up to 15 seconds for completion
                     content = await asyncio.wait_for(asyncio.shield(generation_task), timeout=15.0)
-                    logger.info(f"LLM generation completed for {repo_full_name}")
+                    logger.info(f"[LLM COMPLETE] Generation completed for {repo_full_name}")
                     break
                 except asyncio.TimeoutError:
                     # Task still running - send keepalive ping
                     ping_count += 1
-                    ping_msg = f"data: {json.dumps({'type': 'ping', 'message': f'Still processing... ({ping_count * 15}s elapsed)'})}\n\n"
-                    logger.info(f"Sending keepalive ping #{ping_count} for {repo_full_name} (user: {uid})")
+                    elapsed = time.time() - llm_start
+                    ping_msg = f"data: {json.dumps({'type': 'ping', 'message': f'Still processing... ({int(elapsed)}s elapsed)'})}\n\n"
+                    logger.info(f"[KEEPALIVE] Ping #{ping_count} sent ({elapsed:.1f}s elapsed) for {repo_full_name}")
                     yield ping_msg
             
             # Get result if not already retrieved
@@ -680,7 +682,8 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             else:
                 content = generation_task.result()
 
-            logger.info(f"Report content generated ({len(content)} chars) for {repo_full_name}")
+            llm_duration = time.time() - llm_start
+            logger.info(f"[LLM DONE] Generated {len(content)} chars in {llm_duration:.2f}s for {repo_full_name}")
             yield f"data: {json.dumps({'type': 'status', 'message': 'Streaming report...'})}\n\n"
 
             chunk_size = 40

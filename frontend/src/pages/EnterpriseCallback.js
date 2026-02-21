@@ -19,11 +19,23 @@ export default function EnterpriseCallback() {
   const [organizations, setOrganizations] = useState([]);
   const [connecting, setConnecting] = useState(null);
   const [githubToken, setGithubToken] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Wait for auth to initialize before running callback
+  useEffect(() => {
+    // Give Firebase auth time to initialize after redirect
+    const timer = setTimeout(() => {
+      setAuthChecked(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
-    handleCallback();
+    if (authChecked) {
+      handleCallback();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authChecked]);
 
   const handleCallback = async () => {
     const code = searchParams.get('code');

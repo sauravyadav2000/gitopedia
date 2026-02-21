@@ -634,6 +634,9 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
 
     async def stream_report():
         credits_deducted = False
+        start_time = time.time()
+        logger.info(f"[GENERATION START] User: {uid}, Repo: {repo_full_name}")
+        
         try:
             # Deduct credits INSIDE the stream so refund is guaranteed by finally
             await db.users.update_one(
@@ -641,9 +644,14 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
                 {"$inc": {"credits": -2}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
             )
             credits_deducted = True
+            logger.info(f"[CREDITS] Deducted 2 credits from user {uid}")
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Fetching repository data from GitHub...'})}\n\n"
+            
+            gh_start = time.time()
             github_data = await fetch_github_data(owner, repo)
+            gh_duration = time.time() - gh_start
+            logger.info(f"[GITHUB] Fetched data for {repo_full_name} in {gh_duration:.2f}s")
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing codebase with AI...'})}\n\n"
             

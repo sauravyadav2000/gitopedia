@@ -96,6 +96,9 @@ class CheckoutRequest(BaseModel):
 class EditRequest(BaseModel):
     content: str
 
+class GithubCallbackRequest(BaseModel):
+    code: str
+
 
 # ===== Helper Functions =====
 async def check_repo_freshness(report: dict, owner: str, repo: str) -> dict:
@@ -1344,42 +1347,92 @@ async def github_authorize():
 
 
 @api_router.post("/enterprise/github/callback")
-async def github_callback(code: str, user=Depends(get_current_user)):
+async def github_callback(request: GithubCallbackRequest, user=Depends(get_current_user)):
+    """
+    Handle GitHub OAuth callback - exchange code for access token and fetch organizations
+    """
+    code = request.code
+    user_uid = user.get("uid", "unknown")
+    logger.info(f"[GITHUB-CALLBACK] Starting for user {user_uid[:8]}...")
+    
     try:
         async with httpx.AsyncClient() as client:
+            # Exchange authorization code for access token
+            logger.info(f"[GITHUB-CALLBACK] Exchanging code for access token...")
             token_resp = await client.post(
                 GITHUB_TOKEN_URL,
                 data={"client_id": GITHUB_CLIENT_ID, "client_secret": GITHUB_CLIENT_SECRET, "code": code},
                 headers={"Accept": "application/json"}
             )
+            
             if token_resp.status_code != 200:
+                logger.error(f"[GITHUB-CALLBACK] Token exchange failed: {token_resp.status_code} - {token_resp.text}")
                 raise HTTPException(400, "Failed to exchange code for token")
+            
             token_data = token_resp.json()
             access_token = token_data.get("access_token")
+            
             if not access_token:
-                raise HTTPException(400, "No access token received")
+                logger.error(f"[GITHUB-CALLBACK] No access token in response: {token_data}")
+                raise HTTPException(400, "No access token received from GitHub")
 
+            # Fetch user's organizations
+            logger.info(f"[GITHUB-CALLBACK] Fetching organizations...")
             orgs_resp = await client.get(
                 "https://api.github.com/user/orgs",
-                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github.v3+json", "User-Agent": "Gitopedia/1.0"}
+                headers={
+                    "Authorization": f"Bearer {access_token}", 
+                    "Accept": "application/vnd.github.v3+json", 
+                    "User-Agent": "Gitopedia/1.0"
+                }
             )
+            
             if orgs_resp.status_code != 200:
-                raise HTTPException(400, "Failed to fetch organizations")
+                logger.error(f"[GITHUB-CALLBACK] Failed to fetch orgs: {orgs_resp.status_code} - {orgs_resp.text}")
+                raise HTTPException(400, "Failed to fetch organizations from GitHub")
 
             organizations = orgs_resp.json()
+            logger.info(f"[GITHUB-CALLBACK] Found {len(organizations)} organization(s)")
+            
+            # Handle case when user has no organizations
+            if not organizations or len(organizations) == 0:
+                logger.warning(f"[GITHUB-CALLBACK] User {user_uid[:8]} has no GitHub organizations")
+                return {
+                    "access_token": access_token,
+                    "organizations": [],
+                    "message": "No organizations found. You need to be a member of at least one GitHub organization to use Gitopedia Enterprise."
+                }
+            
+            # Store the GitHub access token for the user
+            await db.users.update_one(
+                {"uid": user_uid},
+                {"$set": {"github_access_token": access_token, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            logger.info(f"[GITHUB-CALLBACK] Stored access token for user {user_uid[:8]}")
+            
+            # Format organizations response
+            formatted_orgs = [
+                {
+                    "id": org["id"], 
+                    "login": org["login"], 
+                    "name": org.get("description") or org["login"],
+                    "avatar_url": org.get("avatar_url"), 
+                    "url": org.get("html_url")
+                }
+                for org in organizations
+            ]
+            
+            logger.info(f"[GITHUB-CALLBACK] SUCCESS - returning {len(formatted_orgs)} organizations")
             return {
                 "access_token": access_token,
-                "organizations": [
-                    {"id": org["id"], "login": org["login"], "name": org.get("description", org["login"]),
-                     "avatar_url": org.get("avatar_url"), "url": org.get("html_url")}
-                    for org in organizations
-                ]
+                "organizations": formatted_orgs
             }
+            
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"GitHub callback error: {e}")
-        raise HTTPException(500, "Failed to complete GitHub authorization")
+        logger.error(f"[GITHUB-CALLBACK] Unexpected error for user {user_uid[:8]}: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(500, f"Failed to complete GitHub authorization: {str(e)}")
 
 
 @api_router.post("/enterprise/organizations/connect")

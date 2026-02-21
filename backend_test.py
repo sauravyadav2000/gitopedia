@@ -3,7 +3,11 @@
 import requests
 import sys
 import json
+import time
+import asyncio
+import aiohttp
 from datetime import datetime
+import re
 
 class GitopediaAPITester:
     def __init__(self, base_url="https://report-gen-staging-1.preview.emergentagent.com"):

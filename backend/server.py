@@ -71,10 +71,20 @@ api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for more verbose logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"[REQUEST] {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
+    if "/enterprise/" in request.url.path:
+        logger.info(f"[ENTERPRISE-REQUEST] Headers: {dict(request.headers)}")
+    response = await call_next(request)
+    logger.info(f"[RESPONSE] {request.method} {request.url.path} -> {response.status_code}")
+    return response
 
 # Constants
 CREDIT_PACKAGES = {

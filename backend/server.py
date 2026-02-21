@@ -322,7 +322,61 @@ Include all tables/models you can identify from the file structure and config fi
 ## Database Schema
 Analyze if there are any database dependencies (e.g., databases listed in config files, ORM imports, connection strings). If found, describe the likely schema. If no database is detected, state "No database schema detected in this repository." """
 
-    return f"""You are performing a deep technical analysis of a GitHub repository. Generate an exhaustive, expert-level Markdown report. This report should be useful to a senior engineer joining the project for the first time.
+    return f"""You are analyzing the GitHub repository "{repo['full_name']}". Generate a concise technical report.
+
+## REPOSITORY DATA
+
+### Metadata
+- Name: {repo['full_name']}
+- Description: {repo['description'] or 'N/A'}
+- Language: {repo['language'] or 'N/A'} | Stars: {repo['stargazers_count']} | Forks: {repo['forks_count']}
+- Created: {repo['created_at']} | Last Push: {repo['pushed_at']}
+- License: {repo['license'] or 'Not specified'}
+
+### Languages
+{languages_str or 'No language data'}
+
+### File Structure (key files)
+{tree_str or 'Unable to retrieve files'}
+
+### Configuration Files
+{configs_str or 'No config files'}
+
+### README (excerpt)
+{data['readme'][:2000] if data['readme'] else 'No README'}
+
+---
+
+## GENERATE REPORT WITH THESE SECTIONS:
+
+### 1. Overview
+2-3 sentences: what it does, who it's for, maturity level.
+
+### 2. Tech Stack
+Table format: **Component** | **Technology**
+Include: Language, Framework, Database, Build Tool, Testing.
+
+### 3. Directory Structure
+ASCII tree with annotations showing key directories and their purpose.
+
+### 4. Architecture
+1-2 paragraphs describing the architecture pattern and design approach.
+Include a simple Mermaid flowchart if components interact.
+
+### 5. Key Features
+Bullet list of 5-7 main capabilities based on code structure.
+
+### 6. Development Setup
+Quick start guide: prerequisites, install, run, test.
+
+{db_section}
+
+## RULES:
+- Be concise and technical
+- Use Mermaid syntax correctly (no parentheses in labels)
+- Only state facts from the data
+- Start directly with "## Overview"
+"""
 
 ## RAW DATA
 

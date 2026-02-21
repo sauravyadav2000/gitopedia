@@ -507,15 +507,18 @@ async def regenerate_report(report_id: str, user=Depends(get_current_user)):
     if not user_doc or user_doc.get("credits", 0) < 2:
         raise HTTPException(402, "Insufficient credits. You need 2 credits to regenerate.")
 
-    await db.users.update_one(
-        {"uid": user["uid"]},
-        {"$inc": {"credits": -2}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-
     owner, repo = existing["repo_full_name"].split("/")
+    uid = user["uid"]
 
     async def stream_regen():
+        credits_deducted = False
         try:
+            await db.users.update_one(
+                {"uid": uid},
+                {"$inc": {"credits": -2}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            credits_deducted = True
+
             yield f"data: {json.dumps({'type': 'status', 'message': 'Re-fetching repository data...'})}\n\n"
             await db.github_cache.delete_one({"repo_full_name": existing["repo_full_name"]})
             github_data = await fetch_github_data(owner, repo)
@@ -538,17 +541,22 @@ async def regenerate_report(report_id: str, user=Depends(get_current_user)):
             }})
 
             await db.credit_transactions.insert_one({
-                "id": str(uuid.uuid4()), "user_id": user["uid"], "amount": -2,
+                "id": str(uuid.uuid4()), "user_id": uid, "amount": -2,
                 "type": "regeneration", "reference_id": report_id,
                 "description": f"Regenerated report for {existing['repo_full_name']}", "created_at": now,
             })
 
-            updated_user = await db.users.find_one({"uid": user["uid"]}, {"_id": 0})
+            credits_deducted = False  # Success — keep deduction
+
+            updated_user = await db.users.find_one({"uid": uid}, {"_id": 0})
             yield f"data: {json.dumps({'type': 'done', 'report_id': report_id, 'credits_remaining': updated_user.get('credits', 0)})}\n\n"
         except Exception as e:
-            await db.users.update_one({"uid": user["uid"]}, {"$inc": {"credits": 2}})
             logger.error(f"Regeneration error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': 'Regeneration failed. Credits refunded.'})}\n\n"
+        finally:
+            if credits_deducted:
+                logger.info(f"Refunding 2 credits for user {uid} (regeneration failed)")
+                await db.users.update_one({"uid": uid}, {"$inc": {"credits": 2}})
 
     return StreamingResponse(stream_regen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"})

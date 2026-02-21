@@ -52,11 +52,24 @@ export default function EnterpriseCallback() {
         body: JSON.stringify({ code })
       });
 
-      if (!res.ok) throw new Error('Failed to authenticate');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to authenticate');
+      }
 
       const data = await res.json();
       setGithubToken(data.access_token);
-      setOrganizations(data.organizations);
+      setOrganizations(data.organizations || []);
+      
+      // Show message if no organizations found
+      if (!data.organizations || data.organizations.length === 0) {
+        if (data.message) {
+          toast.warning(data.message);
+        } else {
+          toast.warning('No organizations found. You need to be a member of at least one GitHub organization.');
+        }
+      }
+      
       setLoading(false);
     } catch (error) {
       console.error('Callback error:', error);
@@ -132,14 +145,26 @@ export default function EnterpriseCallback() {
         <Card>
           <CardContent className="py-12 text-center">
             <Building2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              No organizations found. Make sure you have access to at least one GitHub organization.
+            <h3 className="text-lg font-semibold mb-2">No Organizations Found</h3>
+            <p className="text-muted-foreground mb-4">
+              You need to be a member of at least one GitHub organization to use Gitopedia Enterprise.
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Make sure your GitHub account is connected to an organization, or create one at{' '}
+              <a 
+                href="https://github.com/organizations/new" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                github.com/organizations/new
+              </a>
             </p>
             <Button
               className="mt-4"
               onClick={() => navigate('/enterprise')}
             >
-              Go Back
+              Go Back to Enterprise
             </Button>
           </CardContent>
         </Card>

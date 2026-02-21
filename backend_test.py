@@ -392,17 +392,26 @@ def main():
     
     tester = GitopediaAPITester()
     
-    # Run all tests
+    # Run core API tests
     print("\n📋 Running Core API Tests...")
     tester.test_stats_endpoint()
     tester.test_reports_list_empty() 
     tester.test_reports_check_validation()
     tester.test_auth_verify_endpoint()
     
+    # Run authentication tests
     print("\n🔒 Running Authentication Tests...")
     tester.test_user_profile_unauthorized()
     tester.test_reports_generate_unauthorized()
     tester.test_user_transactions_unauthorized()
+    
+    # Run CRITICAL FEATURES tests from test_result.md
+    print("\n🎯 Running Critical Features Tests...")
+    tester.test_sse_keepalive_simulation()
+    tester.test_github_cache_optimization() 
+    tester.test_fallback_model_implementation()
+    tester.test_credit_refund_mechanism()
+    tester.test_existing_report_data()
     
     # Print results
     tester.print_summary()

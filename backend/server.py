@@ -277,9 +277,12 @@ async def fetch_github_data(owner: str, repo: str, fast_mode: bool = True) -> di
 def build_report_prompt(data: dict) -> str:
     repo = data["repo_info"]
     languages_str = "\n".join([f"- {lang}: {bc} bytes" for lang, bc in data["languages"].items()])
-    tree_str = "\n".join(data["file_tree"][:200])
-    if len(data["file_tree"]) > 200:
-        tree_str += f"\n... and {len(data['file_tree']) - 200} more files"
+    
+    # Limit file tree to 150 for speed
+    tree_str = "\n".join(data["file_tree"][:150])
+    if len(data["file_tree"]) > 150:
+        tree_str += f"\n... and {len(data['file_tree']) - 150} more files"
+        
     configs_str = ""
     for fp, content in data["config_files"].items():
         configs_str += f"\n### {fp}\n```\n{content}\n```\n"

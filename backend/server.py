@@ -507,15 +507,15 @@ async def verify_auth(request: Request):
     email = decoded.get("email", "")
     name = decoded.get("name", email.split("@")[0] if email else "User")
 
-    existing = await db.users.find_one({"uid": uid}, {"_id": 0})
-    if existing:
-        return existing
-
     now = datetime.now(timezone.utc).isoformat()
-    user = {"uid": uid, "email": email, "display_name": name, "credits": 3, "created_at": now, "updated_at": now}
-    await db.users.insert_one(user)
-    user.pop("_id", None)
-    return user
+    result = await db.users.find_one_and_update(
+        {"uid": uid},
+        {"$setOnInsert": {"uid": uid, "email": email, "display_name": name, "credits": 3, "created_at": now, "updated_at": now}},
+        upsert=True,
+        return_document=True,
+        projection={"_id": 0},
+    )
+    return result
 
 
 @api_router.get("/user/profile")

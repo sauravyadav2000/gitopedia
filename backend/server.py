@@ -600,7 +600,23 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             github_data = await fetch_github_data(owner, repo)
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing codebase with AI...'})}\n\n"
-            content = await generate_report_content(github_data)
+            
+            # Generate content with keepalive pings to prevent ingress timeout
+            generation_task = asyncio.create_task(generate_report_content(github_data))
+            content = None
+            
+            while not generation_task.done():
+                try:
+                    # Wait for either completion or timeout (20 seconds)
+                    content = await asyncio.wait_for(asyncio.shield(generation_task), timeout=20.0)
+                    break
+                except asyncio.TimeoutError:
+                    # Send keepalive ping to prevent ingress idle timeout
+                    yield f"data: {json.dumps({'type': 'ping', 'message': 'Processing...'})}\n\n"
+            
+            # If task completed during the loop
+            if content is None:
+                content = await generation_task
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Streaming report...'})}\n\n"
 
@@ -644,6 +660,9 @@ async def generate_report(req: GenerateRequest, user=Depends(get_current_user)):
             updated_user = await db.users.find_one({"uid": uid}, {"_id": 0})
             yield f"data: {json.dumps({'type': 'done', 'report_id': report_id, 'credits_remaining': updated_user.get('credits', 0)})}\n\n"
 
+        except asyncio.CancelledError:
+            logger.warning(f"Report generation cancelled (connection dropped) for user {uid}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Connection lost. Credits have been refunded.'})}\n\n"
         except HTTPException as e:
             logger.error(f"Report generation HTTP error: {e.detail}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e.detail)})}\n\n"

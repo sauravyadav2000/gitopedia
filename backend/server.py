@@ -245,74 +245,199 @@ def build_report_prompt(data: dict) -> str:
         for c in data["recent_commits"]
     ])
 
-    return f"""Analyze the following GitHub repository data and generate a comprehensive Markdown report.
+    # Detect if repo has database models/migrations
+    has_db_schema = False
+    db_hints = []
+    for fp in data["file_tree"]:
+        fp_lower = fp.lower()
+        if any(kw in fp_lower for kw in ["migration", "schema", "models.py", "model.go", "entity", "prisma", "drizzle", ".sql", "typeorm", "sequelize", "alembic", "knex"]):
+            has_db_schema = True
+            db_hints.append(fp)
 
-## Repository Information
-- Name: {repo['full_name']}
-- Description: {repo['description'] or 'No description'}
+    db_section = ""
+    if has_db_schema:
+        db_section = f"""
+## Database Schema
+The repository contains database-related files: {', '.join(db_hints[:15])}
+Analyze these and provide a Mermaid ER diagram showing the database schema with entities, their key attributes, and relationships:
+
+```mermaid
+erDiagram
+    ENTITY1 {{
+        type field1 PK
+        type field2
+    }}
+    ENTITY1 ||--o{{ ENTITY2 : "relationship"
+```
+Include all tables/models you can identify from the file structure and config files. Show primary keys (PK), foreign keys (FK), and relationship cardinality."""
+    else:
+        db_section = """
+## Database Schema
+Analyze if there are any database dependencies (e.g., databases listed in config files, ORM imports, connection strings). If found, describe the likely schema. If no database is detected, state "No database schema detected in this repository." """
+
+    return f"""You are performing a deep technical analysis of a GitHub repository. Generate an exhaustive, expert-level Markdown report. This report should be useful to a senior engineer joining the project for the first time.
+
+## RAW DATA
+
+### Repository Metadata
+- Full Name: {repo['full_name']}
+- Description: {repo['description'] or 'No description provided'}
 - Primary Language: {repo['language'] or 'N/A'}
-- Stars: {repo['stargazers_count']} | Forks: {repo['forks_count']} | Open Issues: {repo['open_issues_count']}
-- Created: {repo['created_at']} | Last Updated: {repo['pushed_at']}
+- Stars: {repo['stargazers_count']} | Forks: {repo['forks_count']} | Open Issues: {repo['open_issues_count']} | Watchers: {repo.get('watchers_count', 'N/A')}
+- Created: {repo['created_at']} | Last Push: {repo['pushed_at']}
 - Default Branch: {repo['default_branch']} | License: {repo['license'] or 'Not specified'}
 - Topics: {', '.join(repo['topics']) if repo['topics'] else 'None'}
-- Size: {repo['size']} KB
+- Repository Size: {repo['size']} KB
 
-## Languages
-{languages_str or 'No language data'}
+### Languages Breakdown
+{languages_str or 'No language data available'}
 
-## File Structure
-{tree_str or 'Unable to retrieve'}
+### Complete File Tree
+{tree_str or 'Unable to retrieve file structure'}
 
-## README
+### README Content
 {data['readme'] or 'No README found'}
 
-## Configuration Files
-{configs_str or 'None found'}
+### Configuration Files
+{configs_str or 'No configuration files found'}
 
-## Top Contributors
-{contribs_str or 'No data'}
+### Top Contributors
+{contribs_str or 'No contributor data available'}
 
-## Recent Commits
-{commits_str or 'No data'}
+### Recent Commits (Last 10)
+{commits_str or 'No recent commit data'}
 
 ---
-Generate a report with EXACTLY these sections. Start directly with ## Overview:
+
+## REPORT INSTRUCTIONS
+
+Generate a comprehensive report with EXACTLY these sections in order. Start directly with the first heading. Use Mermaid diagram syntax where specified.
 
 ## Overview
-3-4 sentences summarizing what this repository is, its purpose, and significance.
+4-6 sentences providing a thorough summary: what the project does, who it's for, what problem it solves, its maturity level, and where it fits in the ecosystem. Mention notable adoption metrics if the star/fork count is significant.
 
 ## Tech Stack
-A markdown table with columns: Layer | Technology | Purpose
-Cover: Language(s), Framework(s), Database(s), Infrastructure, Testing, CI/CD, Package Manager.
-Only include what's confirmed by the data.
+A detailed markdown table with columns: **Layer** | **Technology** | **Version** (if detectable) | **Purpose**
+Include ALL layers you can identify: Language(s), Runtime, Framework(s), Database(s), ORM/ODM, Authentication, API Protocol, Frontend, CSS/Styling, State Management, Testing, CI/CD, Build Tools, Package Manager, Linting/Formatting, Containerization, Monitoring/Logging, Documentation tools. Only include what is confirmed by the data.
 
-## Repository Structure
-Explain the directory layout in prose.
+## Directory Structure
+Provide a detailed **ASCII directory tree** showing the project's folder structure. Include key files and annotate the purpose of each major directory with inline comments:
+
+```
+project-root/
+├── src/                    # Main source code
+│   ├── api/                # API route handlers
+│   ├── models/             # Data models
+│   └── utils/              # Shared utilities
+├── tests/                  # Test suites
+├── config/                 # Configuration
+├── docs/                   # Documentation
+├── Dockerfile              # Container definition
+└── package.json            # Dependencies
+```
+
+After the tree, provide a prose explanation of the architecture implied by the directory layout.
 
 ## Architecture & Design
-How is the system designed? Patterns, principles, structure.
+Deep analysis of the system architecture. Identify and explain:
+- Architecture pattern (monolith, microservices, modular monolith, serverless, etc.)
+- Design patterns used (MVC, CQRS, event sourcing, repository pattern, etc.)
+- Layer separation and boundaries
+- Key abstractions and interfaces
+
+Include a Mermaid flowchart showing the high-level system architecture:
+
+```mermaid
+graph TD
+    A[Component] -->|protocol| B[Component]
+    B --> C[Component]
+```
 
 ## Service Communication & Dependencies
-How do components communicate? APIs, queues, shared state.
+Detailed analysis of how components interact:
+- Internal service calls (function calls, gRPC, REST, GraphQL)
+- External API integrations
+- Message queues or event buses
+- Shared state or databases
+- Authentication/authorization flow
+
+Include a Mermaid sequence diagram showing a key workflow:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Service
+    participant DB
+    Client->>API: Request
+    API->>Service: Process
+    Service->>DB: Query
+    DB-->>Service: Result
+    Service-->>API: Response
+    API-->>Client: Response
+```
+{db_section}
 
 ## Infrastructure & Deployment
-How is this deployed? CI/CD, containers, cloud services.
+Detailed deployment analysis:
+- Container setup (Docker, docker-compose configurations)
+- CI/CD pipeline (GitHub Actions, GitLab CI, etc.)
+- Cloud provider hints (AWS, GCP, Azure, Vercel, etc.)
+- Environment configuration management
+- Scaling considerations visible in the codebase
 
 ## Development Workflow
-How to run locally? Setup steps from config files.
+Step-by-step guide to run this project locally based on the config files:
+1. Prerequisites (runtime versions, tools needed)
+2. Installation steps
+3. Environment setup
+4. Running the application
+5. Running tests
+6. Common development tasks
+
+## Security Considerations
+Analyze security aspects visible in the codebase:
+- Authentication/authorization mechanisms
+- Secret management approach
+- Input validation patterns
+- Dependency security (known patterns)
+- CORS, CSP, or other security headers
+
+## Dependency Analysis
+Analyze the project's dependency footprint:
+- Count of direct vs transitive dependencies
+- Notable/heavyweight dependencies and why they're likely used
+- Potential dependency concerns (very old, deprecated, or risky packages)
+- Dependency update strategy (lockfiles, version pinning)
+
+## Code Quality & Patterns
+Observations about code quality:
+- Code organization patterns
+- Error handling approach
+- Logging strategy
+- Type safety (TypeScript strict mode, type hints, etc.)
+- Test coverage indicators (test file presence, test frameworks)
 
 ## Key Observations
-3-5 bullet points of the most important things to know.
+7-10 bullet points covering the most important things a new developer should know, including:
+- Architecture decisions and their tradeoffs
+- Potential scaling bottlenecks
+- Areas of technical debt (if visible)
+- Strengths of the codebase
+- Unusual or noteworthy patterns
 
 ## Repo Health
-A markdown table: Metric | Value
-Include: Stars, Forks, Open Issues, Last Updated, License, Primary Language, Contributors Count.
+A detailed markdown table: **Metric** | **Value** | **Assessment**
+Include: Stars, Forks, Open Issues, Issue-to-Star Ratio, Last Push Date, Days Since Last Push, License, Primary Language, Number of Languages, Contributors Count, Repository Size, Topic Tags.
 
-RULES:
-- Only include facts supported by the data. Do NOT fabricate.
-- If a section can't be determined, say "Insufficient data to determine."
-- Use proper Markdown: tables, bullets, code blocks.
-- Be thorough but concise. No preamble."""
+CRITICAL RULES:
+- Only include facts supported by the provided data. NEVER fabricate or guess.
+- For Mermaid diagrams: use VALID Mermaid syntax. Keep diagrams clean and readable. Use descriptive node labels.
+- In Mermaid diagrams: do NOT use parentheses () inside node labels. Use square brackets [] for nodes.
+- If a section cannot be determined from the data, write a brief note explaining why and what data would be needed.
+- Use proper Markdown formatting throughout: tables, bullet points, code blocks, bold for emphasis.
+- Be thorough and detailed — this report should be genuinely useful for onboarding.
+- Start directly with ## Overview. No preamble, no introduction."""
 
 
 async def generate_report_content(data: dict) -> str:

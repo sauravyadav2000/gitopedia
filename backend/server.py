@@ -79,9 +79,10 @@ logger = logging.getLogger(__name__)
 # Add request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"[REQUEST] {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
+    client_host = request.client.host if request.client else 'unknown'
+    logger.info(f"[REQUEST] {request.method} {request.url.path} from {client_host}")
     if "/enterprise/" in request.url.path:
-        logger.info(f"[ENTERPRISE-REQUEST] Headers: {dict(request.headers)}")
+        logger.info(f"[ENTERPRISE-REQUEST] Full URL: {request.url}")
     response = await call_next(request)
     logger.info(f"[RESPONSE] {request.method} {request.url.path} -> {response.status_code}")
     return response

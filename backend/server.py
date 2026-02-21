@@ -442,7 +442,7 @@ CRITICAL RULES:
 
 async def generate_report_content(data: dict) -> str:
     prompt = build_report_prompt(data)
-    system_msg = "You are an expert software architect and technical writer. You analyze GitHub repositories and produce detailed, accurate technical reports. Your reports are clear, well-structured, and highly valuable to developers."
+    system_msg = "You are a world-class software architect and technical writer performing deep repository analysis. You produce exhaustive, expert-level technical reports with Mermaid diagrams, ASCII directory trees, and actionable insights. Your reports are the gold standard for understanding any codebase."
 
     # Priority 1: Direct Anthropic API key
     anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
@@ -452,7 +452,7 @@ async def generate_report_content(data: dict) -> str:
             client = anthropic.AsyncAnthropic(api_key=anthropic_key)
             message = await client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=8000,
+                max_tokens=16000,
                 system=system_msg,
                 messages=[{"role": "user", "content": prompt}],
             )

@@ -24,6 +24,10 @@ celery_app.conf.update(
     worker_max_tasks_per_child=50,
 )
 
-# Auto-discover tasks from tasks.py in the same directory
-celery_app.autodiscover_tasks(['.'], related_name='tasks')
+# Import tasks module to register tasks
+try:
+    import tasks
+    print(f"✅ Tasks module imported successfully")
+except ImportError as e:
+    print(f"⚠️  Warning: Could not import tasks module: {e}")
 

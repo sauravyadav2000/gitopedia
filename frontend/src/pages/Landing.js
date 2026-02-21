@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowRight, Star, GitFork, Zap, Search, BookOpen, Code2, FileText } from 'lucide-react';
+import { ArrowRight, Star, GitFork, Zap, Search, BookOpen, Code2, FileText, Building2, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const API = process.env.REACT_APP_BACKEND_URL;

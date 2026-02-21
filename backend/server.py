@@ -476,13 +476,32 @@ async def generate_report_content(data: dict) -> str:
         try:
             logger.info("Using direct Anthropic API key for generation")
             client = anthropic.AsyncAnthropic(api_key=anthropic_key, timeout=300.0)
-            message = await client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=16000,
-                system=system_msg,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return message.content[0].text
+            
+            # Try primary model first (Claude Sonnet 4)
+            try:
+                logger.info("Attempting generation with primary model: claude-sonnet-4-20250514")
+                message = await client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=16000,
+                    system=system_msg,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return message.content[0].text
+            except (anthropic.RateLimitError, anthropic.InternalServerError, Exception) as primary_error:
+                # Fallback to faster, cheaper model
+                logger.warning(f"Primary model failed ({type(primary_error).__name__}), falling back to Haiku")
+                try:
+                    message = await client.messages.create(
+                        model="claude-3-haiku-20240307",
+                        max_tokens=16000,
+                        system=system_msg,
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+                    return message.content[0].text
+                except Exception as fallback_error:
+                    logger.error(f"Fallback model also failed: {fallback_error}")
+                    raise primary_error  # Raise the original error
+                
         except anthropic.BadRequestError as e:
             logger.error(f"Anthropic bad request: {e}")
             raise HTTPException(502, f"AI service error: {str(e)[:200]}")

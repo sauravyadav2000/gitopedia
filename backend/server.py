@@ -1237,7 +1237,8 @@ async def get_user_transactions(user=Depends(get_current_user)):
 
 
 # Include router and middleware
-app.include_router(api_router)
+# NOTE: Router will be included at END of file after all routes are defined
+# app.include_router(api_router)  # MOVED TO END
 
 app.add_middleware(
     CORSMiddleware,

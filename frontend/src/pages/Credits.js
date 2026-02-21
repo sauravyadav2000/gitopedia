@@ -65,10 +65,11 @@ export default function Credits() {
     } catch {
       setTimeout(() => pollPaymentStatus(sid, attempts + 1), 2000);
     }
-  }, [getToken, refreshProfile]);
+  }, [getToken, refreshProfile, setSearchParams]);
 
   useEffect(() => {
-    if (sessionId && user) {
+    if (sessionId && user && !polledRef.current) {
+      polledRef.current = true;
       setVerifying(true);
       pollPaymentStatus(sessionId);
     }
